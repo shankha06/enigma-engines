@@ -1,5 +1,4 @@
 # --- 4. Social Economist Agent (Rule-Based Multi-Objective) ---
-from enigma_engines.animal_crossing.core_classes import ACNHEnvironment, ACNHItemDataset
 
 
 class SocialEconomistAgent:
@@ -55,15 +54,19 @@ class SocialEconomistAgent:
                 self.dataset.get_random_gift_option()
             )  # Get a random good gift
             if (
-                gift_details and # Ensure gift_details is not None
-                state["bells"] >= gift_details.get("cost", float('inf')) # Use get with default for safety
-                and lowest_friend_villager.last_gifted_day != state["current_day"] # Corrected key
+                gift_details  # Ensure gift_details is not None
+                and state["bells"]
+                >= gift_details.get(
+                    "cost", float("inf")
+                )  # Use get with default for safety
+                and lowest_friend_villager.last_gifted_day
+                != state["current_day"]  # Corrected key
             ):
                 possible_actions.append(
                     {
                         "action": {
                             "type": "GIVE_GIFT",
-                            "target_villager_name": lowest_friend_villager.name, # Ensure key matches env
+                            "target_villager_name": lowest_friend_villager.name,  # Ensure key matches env
                             "gift_name": gift_name,
                         },
                         "score": self.weights["friendship"]
@@ -75,22 +78,25 @@ class SocialEconomistAgent:
                 )
 
         # 2. Nook Miles: Do a task if miles are low or tasks are easy
-        active_tasks = state.get("active_nook_tasks", {}) # Corrected key
+        active_tasks = state.get("active_nook_tasks", {})  # Corrected key
         if (
             state["nook_miles"] < self.nook_miles_target_min
-            and active_tasks # Check if there are any tasks
+            and active_tasks  # Check if there are any tasks
         ):
             # Pick first available task by name
             # Ensure active_tasks is not empty before trying to access its elements
             task_names = list(active_tasks.keys())
             if task_names:
-                task_to_do_name = task_names[0] 
+                task_to_do_name = task_names[0]
                 task_info = active_tasks[task_to_do_name]
-                reward_estimate = task_info.get("miles", 0) # Get miles from task_info
-                if reward_estimate > 0: # Only consider tasks that give miles
+                reward_estimate = task_info.get("miles", 0)  # Get miles from task_info
+                if reward_estimate > 0:  # Only consider tasks that give miles
                     possible_actions.append(
                         {
-                            "action": {"type": "DO_NOOK_MILES_TASK", "task_name": task_to_do_name},
+                            "action": {
+                                "type": "DO_NOOK_MILES_TASK",
+                                "task_name": task_to_do_name,
+                            },
                             "score": self.weights["nook_miles"] * reward_estimate,
                         }
                     )
@@ -100,8 +106,11 @@ class SocialEconomistAgent:
             # Estimate "work for bells" action value
             possible_actions.append(
                 {
-                    "action": {"type": "WORK_FOR_BELLS_ISLAND"}, # Corrected action type
-                    "score": self.weights["bells"] * 300,  # Avg expected earning (adjust as per environment)
+                    "action": {
+                        "type": "WORK_FOR_BELLS_ISLAND"
+                    },  # Corrected action type
+                    "score": self.weights["bells"]
+                    * 300,  # Avg expected earning (adjust as per environment)
                 }
             )
 
@@ -111,15 +120,18 @@ class SocialEconomistAgent:
             if state["bells"] < 20000:  # Arbitrary threshold to keep earning
                 possible_actions.append(
                     {
-                        "action": {"type": "WORK_FOR_BELLS_ISLAND"}, # Corrected action type
-                        "score": self.weights["bells"] * 150, # Lower score if not urgent
+                        "action": {
+                            "type": "WORK_FOR_BELLS_ISLAND"
+                        },  # Corrected action type
+                        "score": self.weights["bells"]
+                        * 150,  # Lower score if not urgent
                     }
                 )
             # Or try to complete any Nook Miles task
             elif active_tasks:
                 task_names = list(active_tasks.keys())
                 if task_names:
-                    task_to_do_name = task_names[0] # Pick first available
+                    task_to_do_name = task_names[0]  # Pick first available
                     task_info = active_tasks[task_to_do_name]
                     reward_estimate = task_info.get("miles", 0)
                     if reward_estimate > 0:
