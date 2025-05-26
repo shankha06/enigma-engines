@@ -1,11 +1,4 @@
-<style>
-    .content {
-        margin: 0 auto;
-        width: calc(80% - 100px); /* Corrected: Added spaces around the minus operator */
-    }
-</style>
 
-<div class="content">
 <div align="center">
 
 # 🎮 Enigma Engines - Animal Crossing Simulator 🏝️
@@ -243,4 +236,3 @@ This project is licensed under the terms of the [MIT License](LICENSE) (assuming
 ---
 
 Happy Simulating! 🥳
-</div>
