@@ -1,9 +1,14 @@
-
+<div align="center">
+  <p>
+    <img width="100%" src="https://animalcrossing.nintendo.com/new-horizons/assets/img/home/hero.jpg" alt="Animal Crossing New Horizon Simulator"></a>
+  </p>
+</div>
 <div align="center">
 
-# 🎮 Enigma Engines - Animal Crossing Simulator 🏝️
+# 🎮 Enigma Engines - Animal Crossing New Horizon Simulator 🏝️
 
 </div>
+https://animalcrossing.nintendo.com/new-horizons/assets/img/home/hero.jpg
 Welcome to the Enigma Engines - Animal Crossing Simulator! This project simulates various aspects of the beloved game Animal Crossing: New Horizons (ACNH).
 
 ## 📖 Table of Contents
@@ -17,7 +22,6 @@ Welcome to the Enigma Engines - Animal Crossing Simulator! This project simulate
     - [`ACNHVillager`](#acnhvillager)
     - [`ACNHEnvironment`](#acnhenvironment)
 - [🚀 How to Run](#🚀-how-to-run)
-- [📦 Dependencies](#-dependencies)
 - [🤝 Contributing](#🤝-contributing)
 - [📝 License](#📝-license)
 
@@ -43,10 +47,14 @@ Key features and activities in ACNH include:
   * **Real-Time Progression:** The game syncs with the Nintendo Switch's system clock, meaning a day in ACNH is a real-world day. Shops have opening hours, characters have schedules, and the environment changes with the actual seasons of the player's chosen hemisphere.
 
 -----
+<details open>
+<summary>Core Mechanics</summary>
 
 ### How is Animal Crossing: New Horizons Actually Played?
 
-Animal Crossing: New Horizons offers a gentle, open-ended experience where players dictate their own pace and goals. Here's a general overview of the gameplay loop:
+Animal Crossing: New Horizons offers a gentle, open-ended experience where players dictate their own pace and goals. 
+
+Here's a general overview of the gameplay loop:
 
 1.  **Arrival and Humble Beginnings:**
 
@@ -81,7 +89,7 @@ Animal Crossing: New Horizons offers a gentle, open-ended experience where playe
 6.  **Multiplayer Fun (Optional):**
 
       * Players can visit their friends' islands (or have friends visit theirs) locally or online using Dodo Airlines (DAL). This allows for trading items, sharing custom designs, exploring new environments, and participating in activities together.
-
+</details>
 ACNH is designed to be played over a long period, with new discoveries and small joys unfolding each day. It's a game about creativity, community, and finding comfort in a charming virtual world.
 
 ## 🎯 Objective of the Code
@@ -100,7 +108,7 @@ Essentially, this project provides a framework to explore and experiment with th
 
 1.  **Clone the repository (if applicable):**
     ```bash
-    git clone <your-repository-url>
+    git clone https://github.com/shankha06/enigma-engines.git
     cd enigma-engines
     ```
 
@@ -111,16 +119,9 @@ Essentially, this project provides a framework to explore and experiment with th
     The project uses `uv` for environment management if you have it, or you can use `pip`. Dependencies are listed in `pyproject.toml`.
     ```bash
     # Using pip
-    pip install -r requirements.txt # (You might need to generate this from pyproject.toml or install manually)
-    # or install listed dependencies directly:
-    pip install beautifulsoup4 black fake-useragent matplotlib openpyxl pandas rich ruff seaborn
+    pip install uv
     ```
-    It's highly recommended to use a virtual environment:
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-    pip install beautifulsoup4 black fake-useragent matplotlib openpyxl pandas rich ruff seaborn
-    ```
+    > **Note**   It's highly recommended to use uv. If using `uv`, you need to prefix all commands with `uv run`.
 
 4.  **Data Files:**
     Ensure the `data` directory is present in the root of the project and contains all necessary CSV files (e.g., `villagers.csv`, `items.csv`, `fish.csv`, etc.). The simulator relies on these files to load game information. The expected CSV files are:
@@ -130,76 +131,114 @@ Essentially, this project provides a framework to explore and experiment with th
 
 The simulation is built around a few core Python classes that interact to model the ACNH world.
 
-### Core Classes
+Okay, here's that section enhanced with more readable formatting, including the use of icons (emojis), tables for summarizing key responsibilities, highlights, and clearer structure.
 
-#### `ACNHItemDataset`
+-----
 
--   **Purpose:** This class is responsible for loading and providing access to all game data from the CSV files located in the `/data` directory.
--   **Functionality:**
-    -   Loads data for items (housewares, fossils, tools, etc.), villagers, fish, crops, and Nook Miles tasks (achievements).
-    -   Handles potential errors during CSV loading, such as missing files or columns, and provides fallback data if necessary.
-    -   Provides methods to retrieve:
-        -   Random villager names.
-        -   Details about specific giftable/sellable items (cost, friendship points, sell price).
-        -   Random gift options.
-        -   Templates for daily Nook Miles tasks.
-        -   Data for specific fish or crops.
-    -   Internally uses `pandas` for efficient CSV parsing.
+## 🚀 Core Classes Deep Dive
 
-#### `ACNHVillager`
+This section breaks down the primary classes that form the backbone of the ACNH simulation logic.
 
--   **Purpose:** Represents an individual villager (or the player character) within the simulation.
--   **Functionality:**
-    -   Each villager has a `name`, `friendship_level`, and an `inventory` (a dictionary of item names to quantities).
-    -   Keeps track of the `last_gifted_day` to prevent multiple gifts on the same day.
-    -   `receive_gift()`: Updates friendship level based on the gift received.
-    -   `add_to_inventory()` / `remove_from_inventory()`: Manages the villager's items.
-    -   `log_sale()`: Records items sold by the villager, which can be used for task/achievement tracking.
-    -   `reset_daily_log()`: Clears the daily activity log.
+-----
 
-#### `ACNHEnvironment`
+### 💾 `ACNHItemDataset`
 
--   **Purpose:** This class orchestrates the entire simulation. It manages the game state, time, villagers, and global systems like the economy and tasks.
--   **Functionality:**
-    -   Initializes the simulation with a specified number of villagers and loads data using an `ACNHItemDataset` instance.
-    -   Manages `current_day` and `current_date`.
-    -   Keeps track of the player's main resources: `bells` (currency) and `nook_miles`.
-    -   **Turnip Market:**
-        -   Simulates weekly turnip buying (Sundays) and selling (Monday-Saturday) prices.
-        -   Includes a `turnip_market_saturation_factor` that affects sell prices based on recent sales volume.
-    -   **Nook Miles Tasks:**
-        -   Assigns a set of `active_nook_tasks` daily using templates from the `ACNHItemDataset`.
-        -   Provides a method `_check_task_criteria()` (though the detailed logic for checking completion against villager actions is more involved and part of the agent's decision-making process, which isn't fully detailed in `core_classes.py` but is implied).
-    -   **Crop Farming System:**
-        -   Manages `farm_plots` where crops can be planted and harvested.
-        -   Tracks `crop_name`, `plant_day`, and `ready_day` for each plot.
-    -   **Fish Market Saturation:**
-        -   Adjusts the effective sell price of fish based on how many have been recently sold, simulating supply and demand.
-    -   `reset()`: Resets the environment to its initial state.
-    -   `_populate_initial_villagers()`: Creates villager instances.
-    -   Methods to advance the day (implicitly, by changing `current_day` and calling updates), update turnip prices, and assign tasks.
+> **Primary Role:** Serves as the central repository and provider for all static game data, loaded from CSV files. It's the source of truth for items, villagers, critters, and tasks.
 
-### Overall Flow (Conceptual)
+| Feature Group         | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| :-------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 📂 **Data Loading** | Loads game data from CSV files within the <code>/data</code> directory. This includes: <ul><li>Items (housewares, fossils, tools, etc.)</li><li>Villagers</li><li>Fish</li><li>Crops</li><li>Nook Miles tasks (achievements)</li></ul>|
+| 🛡️ **Error Handling** | Manages potential issues during CSV loading (e.g., missing files/columns). <ul><li>Can provide fallback data or warnings.</li></ul> |
+| ⚙️ **Data Accessors** | Offers methods to retrieve specific game information, such as: <ul><li>Random villager names.</li><li>Details for giftable/sellable items (e.g., <code>cost</code>, <code>friendship_points</code>, <code>sell_price</code>).</li><li>Random gift options for villagers.</li><li>Templates for daily Nook Miles tasks.</li><li>Specific data for fish (e.g., spawn conditions, price) or crops (e.g., <code>GrowthTimeDays</code>).</li></ul>                  |
+| 🛠️ **Underlying Tech** | Utilizes the <code>pandas</code> library for efficient parsing and handling of CSV data.|
 
-1.  **Initialization:**
-    -   An `ACNHEnvironment` is created.
-    -   It initializes an `ACNHItemDataset` to load all game data.
-    -   Villagers are created.
-    -   Initial Bells, Nook Miles, turnip prices, and Nook Miles tasks are set up.
+-----
+### 👤 `ACNHVillager`
 
-2.  **Daily Cycle (Conceptual - requires a simulation loop not explicitly in `core_classes.py`):**
-    -   The `current_day` advances.
-    -   The environment updates:
-        -   Turnip prices are updated based on the day of the week.
-        -   New daily Nook Miles tasks are assigned.
-        -   Crop growth is checked/updated.
-    -   Villagers (agents) would then perform actions based on their goals and the current environment state:
-        -   Decide to buy/sell items.
-        -   Fish, catch bugs, farm crops.
-        -   Interact with other villagers (e.g., give gifts).
-        -   Attempt to complete Nook Miles tasks.
-    -   The environment state (Bells, Nook Miles, inventories, friendship levels, task progress) is updated based on these actions.
-    -   The simulation continues for a set number of days or until certain conditions are met.
+> **Primary Role:** Represents an individual character in the simulation, whether it's a non-player villager or the player themself. Manages personal attributes, inventory, and interactions.
+
+| Attribute/Method                     | Description                                                                                                                                                                                             |
+| :----------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 🆔 **Identity & Social** | Each villager has a unique <code>name</code> and a <code>friendship_level</code> (particularly relevant for interactions with the player or other NPCs).                                                 |
+| 🎒 **Inventory Management** | Maintains an <code>inventory</code> (dictionary mapping item names to quantities). <ul><li><code>add_to_inventory()</code>: Adds items.</li><li><code>remove_from_inventory()</code>: Removes items.</li></ul> |
+| 🎁 **Gift Interactions** | Tracks <code>last_gifted_day</code> to prevent daily gifting exploits. <ul><li><code>receive_gift()</code>: Updates <code>friendship_level</code> based on the gift's value and villager preferences (if modeled).</li></ul> |
+| 📈 **Economic Activity Tracking** | <code>log_sale()</code>: Records items sold by the villager. This data can be crucial for tracking progress towards economic Nook Miles tasks or achievements.                                             |
+| 🗓️ **Daily Reset** | <code>reset_daily_log()</code>: Clears any logs or flags specific to a single day's activities (e.g., daily gift status).                                                                                   |
+-----
+
+### 🏝️ `ACNHEnvironment`
+
+> **Primary Role:** The main engine of the simulation. It orchestrates game state, manages time progression, houses all villagers, and controls global systems like the economy, tasks, and farming.
+
+**Core Functionalities:**
+
+  * 🌍 **Initialization & Setup:**
+
+      * Initializes with a specified number of villagers.
+      * Creates and holds an instance of `ACNHItemDataset` for all game data needs.
+      * Manages the `current_day` and `current_date` of the simulation.
+      * Tracks global player resources like `bells` (currency) and `nook_miles`.
+      * `_populate_initial_villagers()`: Creates the villager instances at the start.
+      * `reset()`: Resets the entire environment to its default initial state for new simulation runs.
+
+  * 📈 **Economic Systems:**
+
+      * **Turnip Market (`Stalk Market`):**
+          * Simulates weekly turnip price fluctuations:
+              * Buy prices set on Sundays.
+              * Sell prices vary daily from Monday to Saturday.
+          * Features a `turnip_market_saturation_factor` that can adjust sell prices based on recent collective sales volume, simulating supply/demand.
+      * **Fish Market Saturation:**
+          * Adjusts the effective sell price of fish based on the quantity recently sold by all agents, mimicking a dynamic market.
+
+  * 🎯 **Nook Miles Tasks System:**
+
+      * Assigns a set of `active_nook_tasks` daily to the player/agent.
+      * Task templates are drawn from the `ACNHItemDataset`.
+      * Includes a method `_check_task_criteria()` for verifying task completion (though the detailed per-action checking might be distributed or handled by the agent).
+
+  * 🌱 **Crop Farming System:**
+
+      * Manages `farm_plots` for planting and harvesting crops.
+      * For each plot, tracks: `crop_name`, `plant_day`, and `ready_day` (when it can be harvested).
+
+  * 🕰️ **Time Progression & Updates:**
+
+      * Implicitly advances the day (e.g., when a simulation loop increments `current_day`).
+      * Triggers daily updates to systems like turnip prices and Nook Miles task assignments.
+      * Manages crop growth status based on elapsed days.
+
+-----
+
+### 🔄 **Overall Flow (Conceptual)**
+
+The simulation progresses through a conceptual daily cycle, driven by an external loop (e.g., in a main script).
+
+1.  ➡️ **Initialization:**
+
+      * An `ACNHEnvironment` instance is created.
+      * This, in turn, initializes the `ACNHItemDataset` (💾 loading all game data).
+      * 👤 Villager instances are created and populated within the environment.
+      * Initial game state is set: starting `bells`, `nook_miles`, initial turnip prices, first set of Nook Miles tasks.
+
+2.  ➡️ **Daily Cycle (Repeated for the duration of the simulation):**
+
+      * ☀️ **Day Advances:** The `current_day` in the `ACNHEnvironment` increments.
+      * ⚙️ **Environment Updates:**
+          * Turnip prices are recalculated based on the new day of the week and market factors.
+          * New daily Nook Miles tasks are assigned/refreshed.
+          * Crop growth on `farm_plots` is updated; some may become ready for harvest.
+          * Market saturation factors (fish, turnips) might be adjusted.
+      * 🧑‍🤝‍🧑 **Agent Actions (Conceptual - driven by an Agent class not detailed here):**
+          * Based on their goals and the current `ACNHEnvironment` state, agents (villagers/player) would:
+              * Make economic decisions (buy/sell items, invest in turnips).
+              * Engage in activities (🎣 fishing, 🦋 bug catching, 🌱 farming).
+              * Interact (🎁 give gifts, talk to others).
+              * Attempt to complete their active Nook Miles tasks.
+      * 📊 **State Update:** The `ACNHEnvironment` (and individual `ACNHVillager` states) are updated based on the outcomes of agent actions (e.g., `bells` change, `inventory` updates, `friendship_levels` adjust, task progress is recorded).
+      * 🏁 **Continuation:** The simulation loop continues for a predetermined number of days or until specific end conditions are met.
+
+-----
 
 ## 🚀 How to Run
 
@@ -209,29 +248,13 @@ uv sync && uv pip install -e .
 uv run python enigma_engines\animal_crossing\simulation.py
 ```
 
-## 📦 Dependencies
-
-This project relies on the following Python libraries:
-
--   `beautifulsoup4>=4.13.3`
--   `black>=25.1.0` (for code formatting)
--   `fake-useragent>=2.1.0`
--   `matplotlib>=3.10.3` (likely for data visualization, though not used in `core_classes.py`)
--   `openpyxl>=3.1.5` (for reading/writing Excel files, though CSVs are the primary data source in `core_classes.py`)
--   `pandas>=2.2.3` (for data manipulation, especially CSV handling)
--   `rich>=14.0.0` (for rich text and beautiful formatting in terminal, not directly used in `core_classes.py`)
--   `ruff>=0.11.0` (for linting)
--   `seaborn>=0.13.2` (for statistical data visualization, not used in `core_classes.py`)
-
-These are listed in the `pyproject.toml` file.
-
 ## 🤝 Contributing
 
-We welcome contributions! Please fork the repository and submit a pull request.
+We welcome contributions! Please fork the repository and submit a pull request. Please ensure your changes are well-documented and include tests if applicable. Contributions are highly appreciated.
 
 ## 📝 License
 
-This project is licensed under the terms of the [MIT License](LICENSE) (assuming `LICENSE` file contains MIT, otherwise update accordingly).
+This project is licensed under the terms of the [MIT License](LICENSE). You are free to use, modify, and distribute this code as long as you comply with the license terms.
 
 ---
 
