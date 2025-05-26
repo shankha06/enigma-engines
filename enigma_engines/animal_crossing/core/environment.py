@@ -6,7 +6,6 @@ from enigma_engines.animal_crossing.core.load_data import ACNHItemDataset
 from enigma_engines.animal_crossing.core.villager import ACNHVillager
 
 
-# --- 3. Simplified ACNH Environment Class ---\r
 class ACNHEnvironment:
     def __init__(
         self,
@@ -56,7 +55,6 @@ class ACNHEnvironment:
         self.reset()
 
     def _populate_initial_villagers(self, num_to_populate):
-        # (Simplified from original, focusing on core functionality)
         if not self.dataset.villager_names:
             self.villagers = []
             return
@@ -171,16 +169,6 @@ class ACNHEnvironment:
             return sold_amount >= c_quantity
 
         elif c_type == "catch_specific_fish":  # Requires logging fish catches
-            # Current implementation (from snippet) checks inventory.
-            # For consistency with other activity-based tasks, this could be changed
-            # to check agent.daily_activity_log.get("caught_fish", [])
-            # if fish catching is logged there.
-            # e.g.,
-            # caught_fish_count = 0
-            # for fish_event in agent.daily_activity_log.get("caught_fish", []):
-            #     if fish_event.get("name") == c_item_name:
-            #         caught_fish_count += fish_event.get("quantity", 0) # Assuming "quantity" per catch event
-            # return caught_fish_count >= c_quantity
             return agent.inventory.get(c_item_name, 0) >= c_quantity
 
         elif (
@@ -195,10 +183,6 @@ class ACNHEnvironment:
             )  # Here c_quantity is the bell amount
 
         elif c_type == "plant_crop":
-            # Assumes agent.daily_activity_log["planted_crops"] is a list of dicts:
-            # e.g., [{"crop_name": "Pumpkin", "quantity": 1}, ...]
-            # c_item_name (optional): specific crop to plant.
-            # c_quantity: number of crops to plant.
             planted_count = 0
             for plant_event in agent.daily_activity_log.get("planted_crops", []):
                 if c_item_name:  # Specific crop name provided in task criteria
@@ -209,12 +193,6 @@ class ACNHEnvironment:
             return planted_count >= c_quantity
 
         elif c_type == "talk_to_villagers":
-            # Assumes agent.daily_activity_log["talked_to_villagers"] is a list of villager names:
-            # e.g., ["Tom Nook", "Isabelle", "Tom Nook"]
-            # c_item_name (optional): specific villager to talk to.
-            # c_quantity:
-            #   - if c_item_name is set: number of times to talk to that specific villager.
-            #   - if c_item_name is None: number of unique villagers to talk to.
             interactions = agent.daily_activity_log.get("talked_to_villagers", [])
             if c_item_name:  # Task is to talk to a specific villager
                 count_specific_villager = interactions.count(c_item_name)
@@ -224,17 +202,10 @@ class ACNHEnvironment:
                 return len(unique_villagers_talked_to) >= c_quantity
 
         elif c_type == "spend_bells":
-            # Assumes agent.daily_activity_log["spent_bells_events"] is a list of dicts:
-            # e.g., [{"amount": 100, "reason": "seeds"}, {"amount": 500, "reason": "item"}]
-            # c_quantity: total amount of bells to be spent.
             total_spent = 0
             for spend_event in agent.daily_activity_log.get("spent_bells_events", []):
                 total_spent += spend_event.get("amount", 0)
             return total_spent >= c_quantity
-
-        # Fallback for unrecognized c_type.
-        # Consider logging a warning if a c_type is not recognized.
-        # print(f"Warning: Unrecognized task criteria type '{c_type}' for task '{task_name}'.")
         return False
 
     def step(
@@ -244,31 +215,19 @@ class ACNHEnvironment:
         delta_bells = 0  # For island/player
         delta_nook_miles = 0  # For island/player
 
-        # --- Resolve acting villager ---
-        # The 'agent_state' parameter is intended to be the ACNHVillager instance performing the action.
-        # If it's not an ACNHVillager instance (e.g., if the full environment state, a name, or None was passed),
-        # we try to find the villager by name using action.get("villager_name").
-
         _resolved_acting_villager: Optional[ACNHVillager] = None
         if isinstance(agent_state, ACNHVillager):
             _resolved_acting_villager = agent_state
-        else:  # agent_state is None, or not an ACNHVillager instance (e.g. the env state dict)
-            if (
-                "villager_name" in action
-            ):  # Check if action dict specifies the acting villager's name
+        else:
+            if "villager_name" in action:
                 actor_name = action.get("villager_name")
-                if actor_name:  # Ensure actor_name is not None or empty
+                if actor_name:
                     _resolved_acting_villager = next(
                         (v for v in self.villagers if v.name == actor_name), None
                     )
-
         acting_villager = _resolved_acting_villager
-        # --- End of acting villager resolution ---
-
         action_type = action.get("type")
 
-        # Some actions don't require a specific villager (e.g. island-wide or system actions)
-        # If an action requires a villager but none was resolved, return no change.
         actions_not_requiring_villager = [
             "ADVANCE_DAY",
             "WORK_FOR_BELLS_ISLAND",
@@ -276,53 +235,130 @@ class ACNHEnvironment:
             "SELL_TURNIPS",
         ]
         if not acting_villager and action_type not in actions_not_requiring_villager:
-            # print(f"Warning: Action '{action_type}' requires an acting_villager but none was found or provided.")
-            return (0, 0, 0)  # No change if action cannot be performed
-
-        # --- VILLAGER SPECIFIC ACTIONS ---
+            return (0, 0, 0)
+        possible_actions = [
+            "GIVE_GIFT",
+            "RECEIVE_GIFT",
+            "DO_NOOK_MILES_TASK",
+            "SELL_ITEMS",
+            "PLANT_CROP",
+            "HARVEST_CROP",
+            "GO_FISHING",
+            "WORK_FOR_BELLS_ISLAND",
+            "BUY_TURNIPS",
+            "SELL_TURNIPS",
+            "ADVANCE_DAY",
+        ]
         if acting_villager:
+            if action_type == "RECEIVE_GIFT":
+                villager_name = action.get("villager_name")
+                # gift_details should be a dictionary, for example:
+                # {"item_name": "rare fossil", "friendship_points": 10}
+                # The 'friendship_points' key is used by ACNHVillager.receive_gift
+                gift_details = action.get("gift_details")
+
+                # --- Begin: Code for the if block ---
+                if not villager_name:
+                    print("Error: 'villager_name' not provided for RECEIVE_GIFT action.")
+                    # Optionally, return or raise an error
+                    return
+
+                if not gift_details:
+                    print(f"Error: 'gift_details' not provided for villager '{villager_name}' for RECEIVE_GIFT action.")
+                    # Optionally, return or raise an error
+                    return
+
+                # Assuming 'self.villagers' is a dictionary mapping villager names to ACNHVillager objects
+                # and 'self.current_day' holds the current day in the environment.
+                if villager_name in self.villagers:
+                    villager = self.villagers[villager_name]
+                    
+                    points_earned = villager.receive_gift(gift_details, self.current_day)
+                    
+                    item_name_display = gift_details.get('item_name', 'a gift')
+                    friendship_points_value = gift_details.get('friendship_points', 0)
+
+                    if points_earned > 0:
+                        print(f"{villager.name} received {item_name_display} (worth {friendship_points_value} points). Friendship points earned: {points_earned}.")
+                        print(f"{villager.name}'s new friendship level: {villager.friendship_level}.")
+                    elif villager.last_gifted_day == self.current_day and points_earned == 0 : # Check if it's because already gifted
+                        print(f"{villager.name} was already gifted {item_name_display} today. No additional friendship points earned.")
+                    else:
+                        print(f"{villager.name} received {item_name_display}, but no friendship points were earned (e.g. gift had 0 points value).")
+
+                else:
+                    print(f"Error: Villager '{villager_name}' not found in the environment.")
+
+                
             if action_type == "GIVE_GIFT":
                 target_villager_name = action.get("target_villager_name")
                 gift_name = action.get("gift_name")
+                
+                # --- DEBUG Lines for GIVE_GIFT ---
+                print(f"DEBUG ENV: Attempting GIVE_GIFT. Actor: {acting_villager.name}, Target: {target_villager_name}, Gift: {gift_name}")
+
                 target_villager = next(
                     (v for v in self.villagers if v.name == target_villager_name), None
                 )
                 gift_details = self.dataset.get_gift_details(gift_name)
 
+                print(f"DEBUG ENV: Target Villager found: {target_villager.name if target_villager else 'None'}")
+                print(f"DEBUG ENV: Gift Details from dataset for '{gift_name}': {gift_details}")
+
                 if target_villager and gift_details:
+                    print(gift_details)
                     cost_of_gift = gift_details.get("cost", 0)
-                    # Assume villager pays from their own (non-existent) bells, or island pays
-                    if self.bells >= cost_of_gift:  # Island pays for now
-                        if (
-                            acting_villager.remove_from_inventory(gift_name, 1)
-                            or gift_name == "Wrapped Fruit"
-                        ):  # Special case or owned item
+                    friendship_points_potential = gift_details.get("friendship_points", 0)
+                    print(f"DEBUG ENV: Gift cost: {cost_of_gift}, Potential friendship points: {friendship_points_potential}, Island bells: {self.bells}")
+
+                    if self.bells >= cost_of_gift: # Island pays or facilitates
+                        can_proceed_with_gifting = False
+                        if gift_name == "Wrapped Fruit": # Example special item
+                            can_proceed_with_gifting = True
+                            print("DEBUG ENV: 'Wrapped Fruit' gift, proceeding.")
+                        elif acting_villager.remove_from_inventory(gift_name, 1):
+                            can_proceed_with_gifting = True
+                            print(f"DEBUG ENV: Gift '{gift_name}' removed from {acting_villager.name}'s inventory.")
+                        else:
+                            # Allow gift if island pays, even if not in inventory (design choice)
+                            can_proceed_with_gifting = True
+                            print(f"DEBUG ENV: Gift '{gift_name}' not in {acting_villager.name}'s inventory, but island pays. Proceeding.")
+                        
+                        if can_proceed_with_gifting:
                             self.bells -= cost_of_gift
                             delta_bells -= cost_of_gift
+                            
+                            # This is the crucial call to the villager object
                             friendship_gain = target_villager.receive_gift(
                                 gift_details, self.current_day
                             )
-                            delta_friendship_total += friendship_gain
+                            # --- DEBUG Line for friendship_gain ---
+                            print(f"DEBUG ENV: `target_villager.receive_gift()` returned friendship_gain: {friendship_gain}")
+                            
+                            if not isinstance(friendship_gain, (int, float)):
+                                print(f"WARNING ENV: `receive_gift` for {target_villager.name} returned non-numeric value: {friendship_gain}. Treating as 0.")
+                                friendship_gain = 0
 
+                            delta_friendship_total += friendship_gain
+                            print(f"DEBUG ENV: Gift given. delta_friendship_total is now: {delta_friendship_total}. Target {target_villager.name} new friendship: {target_villager.friendship_level} (check villager's internal state)")
+                        else:
+                            print(f"DEBUG ENV: Gifting conditions not fully met for {gift_name} to {target_villager_name}.")
+                    else:
+                        print(f"DEBUG ENV: Island cannot afford gift. Cost: {cost_of_gift}, Bells: {self.bells}")
+                else:
+                    if not target_villager: print(f"DEBUG ENV: Target villager '{target_villager_name}' not found.")
+                    if not gift_details: print(f"DEBUG ENV: Gift details for '{gift_name}' not found.")
+            
             elif action_type == "DO_NOOK_MILES_TASK":
                 task_name = action.get("task_name")
                 if task_name in self.active_nook_tasks:
                     if self._check_task_criteria(acting_villager, task_name):
-                        task_info = self.active_nook_tasks.pop(
-                            task_name
-                        )  # Task is completed and removed for this day
+                        task_info = self.active_nook_tasks.pop(task_name)
                         self.nook_miles += task_info["miles"]
                         delta_nook_miles += task_info["miles"]
-                        # print(f"INFO: {acting_villager.name} completed task '{task_name}' for {task_info['miles']} miles.")
-                    # else:
-                    # print(f"INFO: {acting_villager.name} attempted task '{task_name}' but criteria not met.")
 
-            elif (
-                action_type == "SELL_ITEMS"
-            ):  # Replaces generic work for bells for villagers
-                items_to_sell = action.get(
-                    "items_to_sell", []
-                )  # List of {"name": str, "quantity": int}
+            elif action_type == "SELL_ITEMS":
+                items_to_sell = action.get("items_to_sell", [])
                 total_earnings_for_villager = 0
                 for item_sale in items_to_sell:
                     item_name = item_sale.get("name")
@@ -330,9 +366,7 @@ class ACNHEnvironment:
                     if not item_name or quantity <= 0:
                         continue
 
-                    item_details = self.dataset.get_gift_details(
-                        item_name
-                    )  # Use this to get sell_price and category
+                    item_details = self.dataset.get_gift_details(item_name)
                     if (
                         item_details
                         and acting_villager.inventory.get(item_name, 0) >= quantity
@@ -340,7 +374,6 @@ class ACNHEnvironment:
                         sell_price_per_unit = item_details.get("sell_price", 0)
                         category = item_details.get("category", "unknown")
 
-                        # Apply fish market saturation if it's a fish
                         if category == "fish":
                             saturation_factor = self.fish_market_saturation.get(
                                 item_name, 1.0
@@ -352,14 +385,12 @@ class ACNHEnvironment:
 
                         earnings_for_item = quantity * sell_price_per_unit
                         if acting_villager.remove_from_inventory(item_name, quantity):
-                            self.bells += earnings_for_item  # Island gets bells
+                            self.bells += earnings_for_item
                             delta_bells += earnings_for_item
                             total_earnings_for_villager += earnings_for_item
                             acting_villager.log_sale(
                                 item_name, quantity, earnings_for_item, category
                             )
-                # print(f"INFO: {acting_villager.name} sold items for {total_earnings_for_villager} bells.")
-
             elif action_type == "PLANT_CROP":
                 crop_name = action.get("crop_name")
                 plot_id = action.get("plot_id")
@@ -371,19 +402,15 @@ class ACNHEnvironment:
                     and plot_id in self.farm_plots
                     and self.farm_plots[plot_id]["crop_name"] is None
                 ):
-                    if self.bells >= crop_def["SeedCost"]:  # Island pays for seeds
+                    if self.bells >= crop_def["SeedCost"]:
                         self.bells -= crop_def["SeedCost"]
                         delta_bells -= crop_def["SeedCost"]
                         self.farm_plots[plot_id] = {
                             "crop_name": crop_name,
                             "plant_day": self.current_day,
                             "ready_day": self.current_day + crop_def["GrowthTimeDays"],
-                            "owner_villager": acting_villager.name,  # Track who planted
+                            "owner_villager": acting_villager.name,
                         }
-                        # print(f"INFO: {acting_villager.name} planted {crop_name} in plot {plot_id}.")
-                    # else: print(f"INFO: Not enough bells to plant {crop_name}.")
-                # else: print(f"INFO: Cannot plant {crop_name} in plot {plot_id}. Plot busy or crop unknown.")
-
             elif action_type == "HARVEST_CROP":
                 plot_id = action.get("plot_id")
                 if plot_id is not None and plot_id in self.farm_plots:
@@ -391,7 +418,7 @@ class ACNHEnvironment:
                     if (
                         plot_info["crop_name"]
                         and plot_info.get("owner_villager") == acting_villager.name
-                    ):  # Ensure harvester is owner
+                    ):
                         if self.current_day >= plot_info["ready_day"]:
                             crop_def = self.dataset.get_crop_definition(
                                 plot_info["crop_name"]
@@ -400,30 +427,21 @@ class ACNHEnvironment:
                                 acting_villager.add_to_inventory(
                                     plot_info["crop_name"], crop_def["Yield"]
                                 )
-                                # print(f"INFO: {acting_villager.name} harvested {crop_def['Yield']} {plot_info['crop_name']} from plot {plot_id}.")
-                                # Reset plot for now (no regrowth in this version)
                                 self.farm_plots[plot_id] = {
                                     "crop_name": None,
                                     "plant_day": -1,
                                     "ready_day": -1,
                                     "owner_villager": None,
                                 }
-                        # else: print(f"INFO: Crop in plot {plot_id} not ready for harvest.")
-                    # else: print(f"INFO: Plot {plot_id} not harvestable by {acting_villager.name}.")
-
-            elif action_type == "GO_FISHING":  # Basic fishing
+            elif action_type == "GO_FISHING":
                 if self.dataset.fish_data:
                     if random.random() < 0.7:
                         caught_fish = self.dataset.get_random_fish()
                         if caught_fish:
                             acting_villager.add_to_inventory(caught_fish["Name"], 1)
-                            # Log catch for potential criteria:
-                            # acting_villager.daily_activity_log.setdefault("caught_fish", []).append({"name": caught_fish["Name"]})
-                            # print(f"Debug: {acting_villager.name} caught a {caught_fish['Name']}!")
-
-        # --- ISLAND WIDE ACTIONS / NO SPECIFIC VILLAGER ---
-        elif action_type == "WORK_FOR_BELLS_ISLAND":  # Generic island income
-            earnings = random.randint(100, 500)  # Less than specific sales
+            
+        elif action_type == "WORK_FOR_BELLS_ISLAND":
+            earnings = random.randint(100, 500)
             self.bells += earnings
             delta_bells += earnings
 
@@ -455,11 +473,8 @@ class ACNHEnvironment:
                         self.turnip_market_saturation_factor
                         - (quantity_to_sell / 100) * 0.05,
                     )
-
-        elif action_type == "ADVANCE_DAY":  # Special action to advance the day
+        elif action_type == "ADVANCE_DAY":
             self.advance_day_cycle()
-            # Deltas for advance_day are typically 0 unless it triggers passive income/loss
-            # which is handled within advance_day_cycle if needed.
 
         avg_friendship_delta = (
             delta_friendship_total / len(self.villagers)
@@ -472,29 +487,20 @@ class ACNHEnvironment:
         self.current_day += 1
         self.current_date += datetime.timedelta(days=1)
 
-        # Reset daily things for villagers
         for villager in self.villagers:
             villager.reset_daily_log()
 
         self.update_turnip_prices()
-        self.assign_daily_nook_tasks()  # Get new set of tasks for the new day
+        self.assign_daily_nook_tasks()
 
-        # Fish market saturation recovers slightly
         for fish_name in list(self.fish_market_saturation.keys()):
             self.fish_market_saturation[fish_name] = min(
                 1.0, self.fish_market_saturation[fish_name] * 1.1
-            )  # Recovers 10% towards 1.0
-            if (
-                self.fish_market_saturation[fish_name] > 0.95
-            ):  # Remove if close to normal
+            )
+            if self.fish_market_saturation[fish_name] > 0.95:
                 del self.fish_market_saturation[fish_name]
 
-        # Potentially population dynamics, crop growth updates (if passive) etc. would go here.
-        # For current crop model, growth is checked at harvest time based on plant_day and current_day.
-        # print(f"--- Advancing to Day {self.current_day} ({self.current_date.strftime('%Y-%m-%d %A')}) ---")
-
     def get_state(self):
-        """Returns a dictionary representing the current state of the environment."""
         avg_friendship = (
             sum(v.friendship_level for v in self.villagers) / len(self.villagers)
             if self.villagers
@@ -542,6 +548,8 @@ class ACNHEnvironment:
             "avg_friendship": avg_friendship,
             "turnips_sold_today": self.turnips_sold_today_volume,
         }
+
+
 
 
 # Example Usage (optional, for testing purposes):

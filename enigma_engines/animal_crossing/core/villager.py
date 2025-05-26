@@ -4,7 +4,9 @@ from typing import Any, Dict, Optional
 class ACNHVillager:
     def __init__(self, name):
         self.name = name
-        self.friendship_level = 25
+        self.friendship_level = 0
+        self.bells = 0
+        self.nook_miles = 0
         self.last_gifted_day = -1
         self.inventory: Dict[str, int] = {}  # item_name: quantity
         self.daily_activity_log: Dict[str, Any] = {
@@ -19,6 +21,12 @@ class ACNHVillager:
         self.friendship_level = min(255, self.friendship_level + points)
         self.last_gifted_day = current_day
         return points
+    
+    def give_gift(self, item_name: str, quantity: int = 1):
+        if item_name in self.inventory and self.inventory[item_name] >= quantity:
+            self.remove_from_inventory(item_name, quantity)
+            return True
+        return False
 
     def add_to_inventory(self, item_name, quantity=1):
         self.inventory[item_name] = self.inventory.get(item_name, 0) + quantity

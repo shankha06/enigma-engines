@@ -480,3 +480,26 @@ class ACNHItemDataset:
 
     def get_crop_definition(self, crop_name: str) -> Optional[Dict[str, Any]]:
         return self.crop_definitions.get(crop_name)
+    
+    def get_estimated_fish_value(self): # New method for GO_FISHING scoring
+        if not self.fish_data:
+            # print("Warning: Fish data is not loaded. Returning default estimated value.")
+            return 250  # Default value if no fish data is available
+
+        total_value = 0
+        count = 0
+        for fish_item in self.fish_data:
+            sell_price = fish_item.get("Sell")
+            if isinstance(sell_price, (int, float)): # Ensure 'Sell' price is a number
+                total_value += sell_price
+                count += 1
+            # else:
+                # Optionally, log a warning if a fish item has an invalid or missing sell price
+                # print(f"Warning: Fish '{fish_item.get('Name')}' has invalid or missing 'Sell' price.")
+
+        if count == 0:
+            # print("Warning: No fish with valid sell prices found. Returning default estimated value.")
+            return 250  # Default if no fish have valid sell prices
+        
+        average_value = total_value / count
+        return round(average_value) # Return the rounded average value
