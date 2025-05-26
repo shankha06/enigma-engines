@@ -173,7 +173,7 @@ class ACNHEnvironment:
         # print(f"DEBUG: Turnip market updated. Factor: {self.turnip_market_saturation_factor:.2f} (sold {quantity_sold})")
 
 
-    def assign_daily_nook_tasks(self, count=3): # Reduced default count for quicker testing
+    def assign_daily_nook_tasks(self, count=20): # Reduced default count for quicker testing
         self.active_nook_tasks = self.dataset.get_daily_nook_miles_task_templates(count=count)
 
     def _check_task_criteria(self, agent: "ACNHVillager", task_name: str) -> bool:
@@ -325,27 +325,27 @@ class ACNHEnvironment:
                 )
                 gift_details = self.dataset.get_gift_details(gift_name)
 
-                print(f"DEBUG ENV: Target Villager found: {target_villager.name if target_villager else 'None'}")
-                print(f"DEBUG ENV: Gift Details from dataset for '{gift_name}': {gift_details}")
+                # print(f"DEBUG ENV: Target Villager found: {target_villager.name if target_villager else 'None'}")
+                # print(f"DEBUG ENV: Gift Details from dataset for '{gift_name}': {gift_details}")
 
                 if target_villager and gift_details:
                     print(gift_details)
                     cost_of_gift = gift_details.get("cost", 0)
                     friendship_points_potential = gift_details.get("friendship_points", 0)
-                    print(f"DEBUG ENV: Gift cost: {cost_of_gift}, Potential friendship points: {friendship_points_potential}, Island bells: {self.bells}")
+                    # print(f"DEBUG ENV: Gift cost: {cost_of_gift}, Potential friendship points: {friendship_points_potential}, Island bells: {self.bells}")
 
                     if self.bells >= cost_of_gift: # Island pays or facilitates
                         can_proceed_with_gifting = False
                         if gift_name == "Wrapped Fruit": # Example special item
                             can_proceed_with_gifting = True
-                            print("DEBUG ENV: 'Wrapped Fruit' gift, proceeding.")
+                            # print("DEBUG ENV: 'Wrapped Fruit' gift, proceeding.")
                         elif acting_villager.remove_from_inventory(gift_name, 1):
                             can_proceed_with_gifting = True
-                            print(f"DEBUG ENV: Gift '{gift_name}' removed from {acting_villager.name}'s inventory.")
+                            # print(f"DEBUG ENV: Gift '{gift_name}' removed from {acting_villager.name}'s inventory.")
                         else:
                             # Allow gift if island pays, even if not in inventory (design choice)
                             can_proceed_with_gifting = True
-                            print(f"DEBUG ENV: Gift '{gift_name}' not in {acting_villager.name}'s inventory, but island pays. Proceeding.")
+                            # print(f"DEBUG ENV: Gift '{gift_name}' not in {acting_villager.name}'s inventory, but island pays. Proceeding.")
                         
                         if can_proceed_with_gifting:
                             self.bells -= cost_of_gift
@@ -356,21 +356,15 @@ class ACNHEnvironment:
                                 gift_details, self.current_day
                             )
                             # --- DEBUG Line for friendship_gain ---
-                            print(f"DEBUG ENV: `target_villager.receive_gift()` returned friendship_gain: {friendship_gain}")
+                            # print(f"DEBUG ENV: `target_villager.receive_gift()` returned friendship_gain: {friendship_gain}")
                             
                             if not isinstance(friendship_gain, (int, float)):
                                 print(f"WARNING ENV: `receive_gift` for {target_villager.name} returned non-numeric value: {friendship_gain}. Treating as 0.")
                                 friendship_gain = 0
 
                             delta_friendship_total += friendship_gain
-                            print(f"DEBUG ENV: Gift given. delta_friendship_total is now: {delta_friendship_total}. Target {target_villager.name} new friendship: {target_villager.friendship_level} (check villager's internal state)")
-                        else:
-                            print(f"DEBUG ENV: Gifting conditions not fully met for {gift_name} to {target_villager_name}.")
-                    else:
-                        print(f"DEBUG ENV: Island cannot afford gift. Cost: {cost_of_gift}, Bells: {self.bells}")
-                else:
-                    if not target_villager: print(f"DEBUG ENV: Target villager '{target_villager_name}' not found.")
-                    if not gift_details: print(f"DEBUG ENV: Gift details for '{gift_name}' not found.")
+                            # print(f"DEBUG ENV: Gift given. delta_friendship_total is now: {delta_friendship_total}. Target {target_villager.name} new friendship: {target_villager.friendship_level} (check villager's internal state)")
+
             
             
             elif action_type == "TALK_TO_VILLAGER": # New action

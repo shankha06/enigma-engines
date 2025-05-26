@@ -16,6 +16,28 @@ dependencies = [
     "seaborn>=0.13.2",
 ]
 
+[project.optional-dependencies]
+reco = [
+    "fake-useragent>=2.1.0",
+    "faker>=37.3.0",
+    "openpyxl>=3.1.5",
+    "pandas>=2.2.3",
+]
+test = [
+    "pytest==8.3.5",
+    "pytest-cov==6.0.0",
+    "httpx==0.26.0",
+    "pytest-asyncio==0.25.3",
+    "tomli>=2.0.1",
+    "jinja2>=3.1.6"
+]
+
 [tool.setuptools]
 # No package-dir needed for flat layout if packages are in root
 packages = ["enigma_engines"]
+
+[tool.pytest.ini_options]
+testpaths = ["api/tests", "ui/tests"]
+python_files = ["test_*.py"]
+addopts = "--cov=api --cov=ui --cov-report=term-missing --cov-config=.coveragerc --full-trace" 
+asyncio_mode = "auto"
