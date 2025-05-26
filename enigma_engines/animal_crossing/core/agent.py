@@ -1,12 +1,18 @@
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+import math
 
 from enigma_engines.animal_crossing.core.load_data import ACNHItemDataset
 from enigma_engines.animal_crossing.core.villager import ACNHVillager
 class Multi_Objective_Agent:
-    def __init__(self, dataset: ACNHItemDataset, num_villagers_on_island: int, agent_name: str ="Player"):
+    # Define constants for new constraints
+    PLANTER_FOCUS_PERCENTAGE = 0.20  # 20% of villagers encouraged to plant
+    PLANTER_SCORE_BONUS_FACTOR = 1.8
+    FORCE_GIFT_SCORE_BONUS_FACTOR = 250
+    FISHING_SPOT_POPULATION_RATIO = 0.25
+    
+    def __init__(self, dataset: ACNHItemDataset, num_villagers_on_island: int):
         self.dataset = dataset
-        self.agent_name = agent_name
 
         self.weights = {"friendship": 0.50, "bells": 0.35, "nook_miles": 0.15} # Emphasize friendship more
 
@@ -14,38 +20,79 @@ class Multi_Objective_Agent:
         self.bells_target_min = 4000
         self.nook_miles_target_min = 800
 
-        self.last_action_details: Dict[str, Any] = {} # To track more than just type for repetition
-        self.action_repetition_counter = 0
+        # Track last action and repetition counter per villager
+        self.villager_last_action_details: Dict[str, Dict[str, Any]] = {}
+        self.villager_action_repetition_counter: Dict[str, int] = {}
         self.num_villagers_on_island = num_villagers_on_island
 
-    def _is_action_repetitive(self, current_action_details: Dict[str, Any]) -> bool:
-        """Checks if the current action is too similar to the last one."""
-        if not self.last_action_details:
+    def _is_action_repetitive(self, current_action_details: Dict[str, Any], agent_name: str) -> bool:
+        """
+        Checks if the current action is too similar to the last one for the specific agent.
+        
+        Args:
+            current_action_details (Dict[str, Any]): The current action being considered
+            agent_name (str): The name of the agent/villager performing the action
+        Returns:
+            bool: True if the action is repetitive, False otherwise
+        """
+        last_action = self.villager_last_action_details.get(agent_name)
+        if not last_action:
             return False
-        if current_action_details.get("type") != self.last_action_details.get("type"):
+        if current_action_details.get("type") != last_action.get("type"):
             return False
         
         # More specific checks for repetitive actions like gifting/talking to the SAME villager
         if current_action_details.get("type") in ["GIVE_GIFT", "TALK_TO_VILLAGER"]:
-            if current_action_details.get("target_villager_name") == self.last_action_details.get("target_villager_name"):
+            if current_action_details.get("target_villager_name") == last_action.get("target_villager_name"):
                 return True
         # Could add more checks for other action types if needed
         return False
 
 
-    def choose_action(self, state: Dict[str, Any], villagers_details_list: List[ACNHVillager]) -> Dict[str, Any]:
+    def choose_action(self, state: Dict[str, Any], villagers_details_list: List[ACNHVillager], agent_name: str ="Player", actions_taken_today_by_others: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
         """
-        Choose the best action based on the current state and villagers' details.
+        Choose the best action based on the current state, villagers' details, and actions taken by others.
 
         Args:
             state (Dict[str, Any]): The current state of the environment.
             villagers_details_list (List[ACNHVillager]): List of villagers' details.
+            agent_name (str): The name of the villager performing the action.
+            actions_taken_today_by_others (Optional[List[Dict[str, Any]]]): 
+                List of actions already performed by other villagers on the current day.
         Returns:
             Dict[str, Any]: The chosen action details.
         """
         possible_actions_with_scores: List[Dict[str, Any]] = []
+        
+        # --- Pre-calculation for new constraints ---
+        num_total_villagers = len(villagers_details_list)
+        # Fishing limit: Calculate based on current population
+        fishing_spots_limit_today = math.ceil(num_total_villagers * self.FISHING_SPOT_POPULATION_RATIO)
+        
+        go_fishing_actions_count = 0
+        give_gift_actions_count = 0
+        
+        if actions_taken_today_by_others:
+            for action_info in actions_taken_today_by_others:
+                action_type_taken = action_info.get('type')
+                if action_type_taken == "GO_FISHING":
+                    go_fishing_actions_count += 1
+                elif action_type_taken == "GIVE_GIFT":
+                    give_gift_actions_count += 1
+        
+        # Determine if this agent should be a "designated planter" for bonus
+        is_designated_planter_for_bonus = False
+        if num_total_villagers > 0:
+            planter_candidate_count = math.ceil(num_total_villagers * self.PLANTER_FOCUS_PERCENTAGE)
+            try:
+                agent_index_in_list = [v.name for v in villagers_details_list].index(agent_name)
+                if agent_index_in_list < planter_candidate_count:
+                    is_designated_planter_for_bonus = True
+            except (ValueError, AttributeError):
+                # Agent not found in list or villagers don't have name attribute
+                pass
 
-        def get_urgency_multiplier(current_value, target_min, default=1.0, low_multiplier=1.5, very_low_multiplier=2.0):
+        def get_urgency_multiplier(current_value, target_min, default=1.0, low_multiplier=5, very_low_multiplier=10):
             if current_value < target_min / 2: return very_low_multiplier
             if current_value < target_min: return low_multiplier
             return default
@@ -70,7 +117,7 @@ class Multi_Objective_Agent:
                 profit = (state["turnip_sell_price"] - agent_turnip_buy_price) * state["turnips_owned"]
                 score = self.weights["bells"] * profit * bells_urgency * 1.5 # High incentive
                 possible_actions_with_scores.append({
-                    "action": {"type": "SELL_TURNIPS", "quantity": state["turnips_owned"], "villager_name": self.agent_name},
+                    "action": {"type": "SELL_TURNIPS", "quantity": state["turnips_owned"], "villager_name": agent_name},
                     "score": score
                 })
 
@@ -84,24 +131,26 @@ class Multi_Objective_Agent:
                     # Heuristic score: potential gain, inversely related to buy price
                     buy_score = (150 - state["turnip_buy_price"]) * quantity_to_buy 
                     possible_actions_with_scores.append({
-                        "action": {"type": "BUY_TURNIPS", "quantity": quantity_to_buy, "villager_name": self.agent_name},
+                        "action": {"type": "BUY_TURNIPS", "quantity": quantity_to_buy, "villager_name": agent_name},
                         "score": self.weights["bells"] * buy_score * bells_urgency * 0.8
                     })
         
         # WORK_FOR_BELLS_ISLAND
         work_bells_score = 150 # Base estimated earning, less than specific activities usually
         possible_actions_with_scores.append({
-            "action": {"type": "WORK_FOR_BELLS_ISLAND", "villager_name": self.agent_name},
+            "action": {"type": "WORK_FOR_BELLS_ISLAND", "villager_name": agent_name},
             "score": self.weights["bells"] * work_bells_score * bells_urgency
         })
 
-        # GO_FISHING
-        estimated_fish_value = self.dataset.get_estimated_fish_value() # Get this from dataset
-        fishing_score = self.weights["bells"] * estimated_fish_value * bells_urgency * 0.9 # Slightly less than direct work
-        possible_actions_with_scores.append({
-            "action": {"type": "GO_FISHING", "villager_name": self.agent_name},
-            "score": fishing_score
-        })
+        # GO_FISHING - only if fishing spots limit not reached
+        if go_fishing_actions_count < fishing_spots_limit_today:
+            estimated_fish_value = self.dataset.get_estimated_fish_value() # Get this from dataset
+            probability_of_catch = state.get("fishing_probability", 0.5) # Assume a default catch probability
+            fishing_score = self.weights["bells"] * estimated_fish_value * bells_urgency * 0.7 # Slightly less than direct work
+            possible_actions_with_scores.append({
+                "action": {"type": "GO_FISHING", "villager_name": agent_name},
+                "score": fishing_score
+            })
 
         # SELL_ITEMS
         items_to_propose_selling_list = []
@@ -145,33 +194,37 @@ class Multi_Objective_Agent:
             
             if final_items_to_sell_list:
                 possible_actions_with_scores.append({
-                    "action": {"type": "SELL_ITEMS", "villager_name": self.agent_name, "items_to_sell_list": final_items_to_sell_list},
+                    "action": {"type": "SELL_ITEMS", "villager_name": agent_name, "items_to_sell_list": final_items_to_sell_list},
                     "score": self.weights["bells"] * current_batch_value * bells_urgency
                 })
 
 
         # --- 2. Evaluate Friendship Actions (Iterate through ALL villagers) ---
         for villager in villagers_details_list:
-            if villager.name == self.agent_name: continue # Agent doesn't interact with itself
+            if villager.name == agent_name: continue # Agent doesn't interact with itself
 
             # GIVE_GIFT to this villager
-            if villager.last_gifted_day != current_day:
-                gift_name, gift_details = self.dataset.get_random_gift_option() # Agent has "infinite" access to random gifts for now
-                if gift_details and gift_details.get("friendship_points", 0) > 0:
-                    cost = gift_details.get("cost", 0)
-                    if current_bells >= cost:
-                        friendship_gain_potential = gift_details["friendship_points"]
-                        urgency_for_this_villager = get_urgency_multiplier(villager.friendship_level, self.friendship_target_min)
-                        score = (friendship_gain_potential / (cost + 1.0)) * self.weights["friendship"] * friendship_urgency * urgency_for_this_villager
-                        possible_actions_with_scores.append({
-                            "action": {
-                                "type": "GIVE_GIFT",
-                                "villager_name": self.agent_name, # The agent performing the action
-                                "target_villager_name": villager.name,
-                                "gift_name": gift_name,
-                            },
-                            "score": score
-                        })
+            # if villager.last_gifted_day != current_day:
+            gift_name, gift_details = self.dataset.get_random_gift_option() # Agent has "infinite" access to random gifts for now
+            if gift_details["friendship_points"] > 0:
+                cost = gift_details.get("cost", 0)
+                if current_bells >= cost:
+                    friendship_gain_potential = gift_details["friendship_points"]
+                    urgency_for_this_villager = get_urgency_multiplier(villager.friendship_level, self.friendship_target_min)
+                    score = (friendship_gain_potential / (cost + 1.0)) * self.weights["friendship"] * friendship_urgency * urgency_for_this_villager
+                    
+                    # Apply bonus if no gifts have been given today
+                    if give_gift_actions_count == 0:
+                        score *= self.FORCE_GIFT_SCORE_BONUS_FACTOR
+                    possible_actions_with_scores.append({
+                        "action": {
+                            "type": "GIVE_GIFT",
+                            "villager_name": agent_name, # The agent performing the action
+                            "target_villager_name": villager.name,
+                            "gift_name": gift_name,
+                        },
+                        "score": score
+                    })
             
             # TALK_TO_VILLAGER (New action type, environment must support it)
             # Assume talking gives a small, fixed friendship boost.
@@ -184,12 +237,12 @@ class Multi_Objective_Agent:
             # For now, just consider it as an option
             score = talk_score_raw * self.weights["friendship"] * friendship_urgency * urgency_for_this_villager_talk
             possible_actions_with_scores.append({
-                "action": {"type": "TALK_TO_VILLAGER", "villager_name": self.agent_name, "target_villager_name": villager.name},
+                "action": {"type": "TALK_TO_VILLAGER", "villager_name": agent_name, "target_villager_name": villager.name},
                 "score": score
             })
 
         # --- 3. Evaluate Nook Miles Actions ---
-        available_tasks_dict = state.get("available_nook_tasks", {}) # Should be {task_name: details_dict}
+        available_tasks_dict = state.get("active_nook_tasks", {}) # Should be {task_name: details_dict}
         if available_tasks_dict:
             for task_name, task_details in available_tasks_dict.items():
                 miles_reward = task_details.get("miles", 0)
@@ -198,7 +251,7 @@ class Multi_Objective_Agent:
                     # The environment's _check_task_criteria will gate this.
                     score = miles_reward * self.weights["nook_miles"] * nook_miles_urgency
                     possible_actions_with_scores.append({
-                        "action": {"type": "DO_NOOK_MILES_TASK", "task_name": task_name, "villager_name": self.agent_name},
+                        "action": {"type": "DO_NOOK_MILES_TASK", "task_name": task_name, "villager_name": agent_name},
                         "score": score
                     })
         
@@ -216,8 +269,13 @@ class Multi_Objective_Agent:
                 potential_profit = (crop_def.get("SellPrice", 20) * crop_def.get("Yield", 1)) - crop_def["SeedCost"]
                 if potential_profit > 0 :
                     score = self.weights["bells"] * potential_profit * bells_urgency * 0.7 # Farming is longer term
+                    
+                    # Apply planting bonus for designated planters
+                    if is_designated_planter_for_bonus:
+                        score *= self.PLANTER_SCORE_BONUS_FACTOR
+                        
                     possible_actions_with_scores.append({
-                        "action": {"type": "PLANT_CROP", "crop_name": crop_to_plant, "plot_id": empty_plots[0], "villager_name": self.agent_name},
+                        "action": {"type": "PLANT_CROP", "crop_name": crop_to_plant, "plot_id": empty_plots[0], "villager_name": agent_name},
                         "score": score
                     })
 
@@ -227,16 +285,36 @@ class Multi_Objective_Agent:
                 # Agent should only harvest crops it owns (or if it's communal and it's its turn/job)
                 if status.get("crop_name") and \
                    status.get("ready_day", float('inf')) <= current_day and \
-                   status.get("owner_villager") == self.agent_name: # Check ownership
+                   status.get("owner_villager") == agent_name: # Check ownership
                     crop_def = self.dataset.get_crop_definition(status["crop_name"])
                     if crop_def:
                         harvest_value = crop_def.get("SellPrice", 20) * crop_def.get("Yield", 1)
                         score = self.weights["bells"] * harvest_value * bells_urgency # Direct gain
                         possible_actions_with_scores.append({
-                            "action": {"type": "HARVEST_CROP", "plot_id": plot_id, "villager_name": self.agent_name},
+                            "action": {"type": "HARVEST_CROP", "plot_id": plot_id, "villager_name": agent_name},
                             "score": score
                         })
                         # Consider harvesting multiple plots if available, but for now, one per decision cycle if good.
+
+        # --- Apply Diversity Penalty ---
+        # Penalize actions that have been taken frequently by other villagers today
+        if actions_taken_today_by_others and possible_actions_with_scores:
+            action_type_counts = {}
+            for act_info in actions_taken_today_by_others:
+                act_type = act_info.get('type')
+                if act_type:
+                    action_type_counts[act_type] = action_type_counts.get(act_type, 0) + 1
+            
+            for scored_action in possible_actions_with_scores:
+                action_type = scored_action['action']['type']
+                num_times_taken = action_type_counts.get(action_type, 0)
+                if num_times_taken > 0:
+                    # Apply a penalty factor, e.g., 0.85 for 1st repeat, 0.85^2 for 2nd, etc.
+                    # Exception: Gift giving might be okay if multiple villagers want to give gifts
+                    if action_type != "GIVE_GIFT" or num_times_taken > 1: # Allow at least one gift without penalty
+                        # Max penalty factor to avoid scores becoming too small
+                        penalty_multiplier = max(0.1, 0.85 ** num_times_taken) 
+                        scored_action['score'] *= penalty_multiplier
 
         # --- Action Selection ---
         if not possible_actions_with_scores:
@@ -246,11 +324,12 @@ class Multi_Objective_Agent:
             possible_actions_with_scores.sort(key=lambda x: x["score"], reverse=True)
             
             # Anti-repetition logic: if top action is repetitive, try next best non-repetitive one
+            current_agent_repetition_counter = self.villager_action_repetition_counter.get(agent_name, 0)
             best_action_info = possible_actions_with_scores[0]
-            if self.action_repetition_counter >= 2 and self._is_action_repetitive(best_action_info["action"]):
+            if current_agent_repetition_counter >= 2 and self._is_action_repetitive(best_action_info["action"], agent_name):
                 found_alternative = False
                 for alt_action_info in possible_actions_with_scores[1:]:
-                    if not self._is_action_repetitive(alt_action_info["action"]):
+                    if not self._is_action_repetitive(alt_action_info["action"], agent_name):
                         best_action_info = alt_action_info
                         found_alternative = True
                         break
@@ -259,17 +338,17 @@ class Multi_Objective_Agent:
             
             chosen_action_details = best_action_info["action"]
 
-        # Update repetition counter and last action details
-        if self._is_action_repetitive(chosen_action_details) and chosen_action_details["type"] != "IDLE":
-            self.action_repetition_counter += 1
+        # Update repetition counter and last action details for this specific agent
+        if chosen_action_details["type"] != "IDLE" and self._is_action_repetitive(chosen_action_details, agent_name):
+            self.villager_action_repetition_counter[agent_name] = self.villager_action_repetition_counter.get(agent_name, 0) + 1
         else:
-            self.action_repetition_counter = 0
+            self.villager_action_repetition_counter[agent_name] = 0
         
-        self.last_action_details = chosen_action_details.copy() # Store a copy
+        self.villager_last_action_details[agent_name] = chosen_action_details.copy() # Store a copy
         
         # Ensure agent_name is in the action for the environment
         if "villager_name" not in chosen_action_details and chosen_action_details["type"] != "IDLE":
-             chosen_action_details["villager_name"] = self.agent_name
+             chosen_action_details["villager_name"] = agent_name
         
         # Debug prints (optional)
         # print(f"Agent Choosing: Day {current_day}, Bells {current_bells}, AvgFriend {state.get('avg_friendship',0):.1f}")

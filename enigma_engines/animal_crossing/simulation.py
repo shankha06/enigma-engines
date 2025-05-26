@@ -3,8 +3,6 @@ from enigma_engines.animal_crossing.core.agent import Multi_Objective_Agent
 from enigma_engines.animal_crossing.core.environment import ACNHEnvironment
 from enigma_engines.animal_crossing.core.load_data import ACNHItemDataset
 
-# from enigma_engines.animal_crossing.plotting_utils import plot_simulation_results # Keep if you still want image plots
-
 # Rich library imports
 from rich.console import Console
 from rich.table import Table
@@ -12,6 +10,9 @@ from rich.panel import Panel
 from rich.text import Text
 from rich.padding import Padding
 from rich.columns import Columns
+from rich.console import Group
+
+from typing import Dict, Any, List
 
 # --- Rich Console Initialization ---
 console = Console()
@@ -44,24 +45,28 @@ def format_friendship(friendship_level):
 def _print_day_summary_panel(console_instance: Console, panel_title: str, info_elements: list):
     """
     Prints the day's summary information within a Rich Panel.
+    Handles a list of Rich renderables (Text, Table, Panel, etc.).
 
     Args:
         console_instance: The Rich Console object to use for printing.
         panel_title: The title for the panel.
-        info_elements: A list of Rich renderables (Text, Table, strings) to display.
+        info_elements: A list of Rich renderables to display.
     """
-    content_to_render = (
-        "\n".join(str(item) for item in info_elements)
-        if not isinstance(info_elements[0], Table)
-        and not isinstance(info_elements[0], Text)
-        else Columns(info_elements, expand=True, equal=True)
-    )
+    panel_content_renderables = []
+    for item in info_elements:
+        if hasattr(item, '__rich_console__'): # Check if it's a Rich renderable
+            panel_content_renderables.append(item)
+        else: # Convert simple strings to Text
+            panel_content_renderables.append(Text(str(item)))
+    
+    content_group = Group(*panel_content_renderables)
 
     console_instance.print(
         Panel(
-            Padding(content_to_render, (1, 2)),
+            Padding(content_group, (1, 2)), # Padding around the group
             title=panel_title,
             border_style="cyan",
+            expand=False # Prevent panel from taking full width if content is small
         )
     )
 
@@ -107,16 +112,28 @@ def print_summary_table(console_instance: Console, final_state: dict, days_to_si
     console_instance.print(villager_final_table)
 
 
-def _display_daily_report(console_instance: Console, environment: ACNHEnvironment):
+def _display_daily_report(
+    console_instance: Console,
+    environment: ACNHEnvironment, # Still useful for direct access if needed beyond state
+    current_env_state: Dict[str, Any], # State *after* actions for logical_day_num
+    actions_log: List[Dict[str, Any]],
+    logical_day_num: int # The simulation loop's day index
+):
     """
-    Prepares and displays the full daily report/summary panel.
+    Prepares and displays the full daily report/summary panel, including actions.
 
     Args:
         console_instance: The Rich Console object.
-        environment: The ACNHEnvironment instance for the current simulation state.
+        environment: The ACNHEnvironment instance.
+        current_env_state: The current state dictionary from environment.get_state().
+        actions_log: A list of action dictionaries performed during the logical day.
+        logical_day_num: The logical day number from the simulation loop.
     """
-    current_env_state = environment.get_state()
-    day_panel_title = f":calendar: Day {environment.current_day} ({current_env_state['current_date']}) :sunrise_over_mountains:"
+    day_panel_title = (
+        f":calendar: Report for Logical Day {logical_day_num} "
+        f"(Env. Day {current_env_state['current_day']}, Date: {current_env_state['current_date']}) "
+        f":sunrise_over_mountains:"
+    )
 
     header_text = Text(justify="center")
     header_text.append(
@@ -142,15 +159,59 @@ def _display_daily_report(console_instance: Console, environment: ACNHEnvironmen
             f":chart_with_upwards_trend: Nooklings buying turnips at: [bold green]{current_env_state['turnip_sell_price']}[/bold green] bells"
         )
 
+    # Villager Actions Table
+    if actions_log:
+        actions_table = Table(
+            title=":performing_arts: Villager Actions This Logical Day",
+            show_header=True,
+            header_style="bold magenta",
+            expand=False
+        )
+        actions_table.add_column("Villager", style="italic yellow", width=15, overflow="fold")
+        actions_table.add_column("Action Type", style="cyan", width=20, overflow="fold")
+        actions_table.add_column("Details", overflow="fold")
+
+        for action_item in actions_log:
+            actor = action_item.get("villager_name", "N/A")
+            action_type = action_item.get("type", "UNKNOWN")
+            
+            details_parts = []
+            if action_item.get('target_villager_name'):
+                details_parts.append(f"Target: {action_item['target_villager_name']}")
+            if action_item.get('gift_name'):
+                details_parts.append(f"Gift: {action_item['gift_name']}")
+            if action_item.get('task_name'):
+                details_parts.append(f"Task: {action_item['task_name']}")
+            if action_item.get('crop_name'):
+                details_parts.append(f"Crop: {action_item['crop_name']}")
+            if action_item.get('plot_id') is not None:
+                 details_parts.append(f"Plot: {action_item['plot_id']}")
+            if action_item.get('quantity'):
+                details_parts.append(f"Qty: {action_item['quantity']}")
+            if action_item.get('items_to_sell_list'):
+                items_summary = ", ".join([f"{item['name']}(x{item['quantity']})" for item in action_item['items_to_sell_list'][:2]])
+                if len(action_item['items_to_sell_list']) > 2: items_summary += "..."
+                details_parts.append(f"Items: {items_summary}")
+            
+            details_str = "; ".join(details_parts)
+            if action_type == "IDLE":
+                details_str = "[dim]Took a break[/dim]"
+            
+            actions_table.add_row(actor, action_type, details_str if details_str else "[dim]-[/dim]")
+        day_info.append(actions_table)
+    else:
+        day_info.append(":zzz: No villager actions logged for this logical day.")
+
     if current_env_state["active_nook_tasks"]:
         tasks_table = Table(
             title=":scroll: Available Nook Tasks",
             show_header=True,
             header_style="bold blue",
+            expand=False
         )
-        tasks_table.add_column("Task Name", style="dim", width=30)
+        tasks_table.add_column("Task Name", style="dim", width=30, overflow="fold")
         tasks_table.add_column("Miles", justify="right")
-        tasks_table.add_column("Category", justify="right")
+        tasks_table.add_column("Category", justify="right", overflow="fold")
         tasks_table.add_column("Quantity", justify="right")
         for task_name, details in current_env_state["active_nook_tasks"].items():
             tasks_table.add_row(
@@ -167,6 +228,7 @@ def _display_daily_report(console_instance: Console, environment: ACNHEnvironmen
         title=":house_with_garden: Villager Friendship Levels",
         show_header=True,
         header_style="bold purple",
+        expand=False
     )
     villager_table.add_column("Villager Name", style="italic")
     villager_table.add_column("Friendship", justify="center")
@@ -180,7 +242,17 @@ def _display_daily_report(console_instance: Console, environment: ACNHEnvironmen
     _print_day_summary_panel(console_instance, day_panel_title, day_info)
 
 
-def run_simulation(days_to_simulate, actions_per_day=15):
+def run_simulation(days_to_simulate, actions_per_day=None):
+    """
+    Run the Animal Crossing simulation with per-villager actions.
+    
+    Args:
+        days_to_simulate: Number of days to simulate
+        actions_per_day: Maximum number of villagers that can act per day. 
+                         If None, all villagers will act each day.
+    """
+    import random  # For shuffling villagers
+    
     console.print(
         Panel(
             "[bold magenta]--- Starting ACNH Social Economist Agent Simulation --- :rocket:",
@@ -190,92 +262,103 @@ def run_simulation(days_to_simulate, actions_per_day=15):
     )
 
     dataset = ACNHItemDataset()  # Load once
-    num_villagers = 3
+    num_villagers = 10
     env = ACNHEnvironment(num_villagers=num_villagers, dataset=dataset)
     agent = Multi_Objective_Agent(dataset=dataset, num_villagers_on_island=num_villagers)
 
     env.reset()  # Initialize environment
 
     total_rewards_log = {"friendship": [], "bells": [], "nook_miles": []}
-    agent_state_log = []
+    
+    # If actions_per_day is not specified, allow all villagers to act
+    if actions_per_day is None:
+        actions_per_day = num_villagers
 
-    env.reset()
-
-    total_rewards_log = {"friendship": [], "bells": [], "nook_miles": []}
-    # agent_state_log = [] # Log the state at the end of each full day
-
-    for day_idx in range(days_to_simulate): # This is the master day counter
-        _display_daily_report(console, env) # Report at the start of the logical day
-
+    for day_idx in range(days_to_simulate):  # This is the master day counter
+        current_env_state_at_loop_start = env.get_state()  # State at the beginning of the logical day
+        
+        # Get all villagers and shuffle them for random action order
+        villagers_for_today = list(env.villagers)
+        random.shuffle(villagers_for_today)
+        
+        # Track actions for this logical day for the report
+        actions_for_this_logical_day = []
+        villagers_acted_count_this_logical_day = 0
+        
         day_was_advanced_by_agent = False
-
-        for action_num in range(actions_per_day):
-            current_env_state = env.get_state()
-
-            # If the environment's day has already passed beyond the current 'day_idx',
-            # it means an "ADVANCE_DAY" action was taken in a previous sub-step.
-            # So, break from taking more actions for this 'day_idx'.
-            if current_env_state["current_day"] > day_idx:
-                day_was_advanced_by_agent = True # Mark that agent advanced the day
+        
+        # Limit the number of villagers that can act today
+        max_villagers_to_act = min(actions_per_day, len(villagers_for_today))
+        
+        for villager_idx, acting_villager in enumerate(villagers_for_today):
+            if villagers_acted_count_this_logical_day >= max_villagers_to_act:
+                break  # Reached max number of villagers for the day
+                
+            # Get fresh state for each villager's decision
+            current_env_state_for_decision = env.get_state()
+            
+            # If day was already advanced, stop processing villagers
+            if current_env_state_for_decision["current_day"] > current_env_state_at_loop_start["current_day"]:
+                day_was_advanced_by_agent = True
                 break
-
-            action = agent.choose_action(current_env_state, env.villagers)
+                
+            # Choose action for this specific villager, considering diversity
+            action = agent.choose_action(
+                current_env_state_for_decision, 
+                env.villagers,
+                agent_name=acting_villager.name,
+                actions_taken_today_by_others=actions_for_this_logical_day
+            )
             
-            action_description = f"{action['type']}"
-            if action.get('target_villager_name'): action_description += f" -> {action['target_villager_name']}"
-            if action.get('gift_name'): action_description += f" (Gift: {action['gift_name']})"
-            if action.get('task_name'): action_description += f" (Task: {action['task_name']})"
-            if action.get('crop_name'): action_description += f" (Crop: {action['crop_name']})"
-            if action.get('quantity'): action_description += f" (Qty: {action['quantity']})"
-            
-            console.print(f"  ↪ Day {current_env_state['current_day']} | Turn {action_num + 1}/{actions_per_day}: [italic]{action_description}[/italic]")
+            # Add action to log for the report
+            actions_for_this_logical_day.append(action.copy())
 
             if action["type"] == "IDLE":
-                console.print("    Agent chose IDLE. Considering next turn or ending day.")
-                # If agent is consistently IDLE, it will just use up its turns.
-                # No need to break early unless IDLE means "I want to end my day now".
-                # If ADVANCE_DAY is a choosable action, agent should pick that to end day.
-                continue # Takes up an action point but does nothing
+                # Still count this villager as having acted
+                villagers_acted_count_this_logical_day += 1
+                continue
+                
+            # Execute the action
+            _, _, _ = env.step(action, acting_villager)  # Pass acting_villager for direct use
+            
+            # Track this villager's action
+            villagers_acted_count_this_logical_day += 1
 
-            # --- Execute Action ---
-            # The 'agent_state' parameter for env.step in your original code was current_env_state (a dict).
-            # If env.step uses action["villager_name"] to resolve the actor, this is fine.
-            # The Multi_Objective_Agent should set action["villager_name"] = self.agent_name.
-            # The original was: reward_friendship, reward_bells, reward_nook_miles = env.step(action, current_env_state)
-            # Let's stick to that pattern for consistency with your setup.
-            # Ensure your ACNHEnvironment.step can correctly identify the 'acting_villager'
-            # from action["villager_name"] if the second argument is not an ACNHVillager instance.
-            _, _, _ = env.step(action, None) # Pass None for agent_obj, rely on action["villager_name"]
-
-            # If the action taken was ADVANCE_DAY, the environment's day counter will increment.
+            # If the action taken was ADVANCE_DAY, the environment's day counter will increment
             if action["type"] == "ADVANCE_DAY":
                 day_was_advanced_by_agent = True
-                console.print(f"    [bold yellow]Agent advanced day. Moving to next simulation day.[/bold yellow]")
-                break # End actions for this `day_idx`
+                break  # End actions for this `day_idx`
 
         # --- End of Actions for `day_idx` ---
-        final_state_today = env.get_state() # State after all actions for this logical day are done
+        state_after_actions = env.get_state() # State after all actions for this logical day are done
+
+        # Display the daily report for the logical day that just finished
+        _display_daily_report(
+            console,
+            env,
+            state_after_actions, # Current state of the environment
+            actions_for_this_logical_day, # Actions performed during this logical day
+            day_idx # The logical day number
+        )
 
         # Log overall daily results
-        total_rewards_log["friendship"].append(final_state_today["avg_friendship"])
-        total_rewards_log["bells"].append(final_state_today["bells"])
-        total_rewards_log["nook_miles"].append(final_state_today["nook_miles"])
-        # agent_state_log.append(final_state_today) # Log if needed for detailed daily state history
+        total_rewards_log["friendship"].append(state_after_actions["avg_friendship"])
+        total_rewards_log["bells"].append(state_after_actions["bells"])
+        total_rewards_log["nook_miles"].append(state_after_actions["nook_miles"])
 
         if day_idx % 100 == 0 or day_idx == days_to_simulate - 1:
             progress_text = Text.assemble(
-                (f"End of Day {day_idx} (Env Day: {final_state_today['current_day']}, Date: {final_state_today['current_date']}): ", "bold"),
-                ("Bells: ", "italic"), format_bell_count(final_state_today["bells"]), " | ",
-                ("Miles: ", "italic"), format_nook_miles(final_state_today["nook_miles"]), " | ",
-                ("AvgFriend: ", "italic"), format_friendship(final_state_today["avg_friendship"]),
+                (f"End of Day {day_idx} (Env Day: {state_after_actions['current_day']}, Date: {state_after_actions['current_date']}): ", "bold"),
+                ("Bells: ", "italic"), format_bell_count(state_after_actions["bells"]), " | ",
+                ("Miles: ", "italic"), format_nook_miles(state_after_actions["nook_miles"]), " | ",
+                ("AvgFriend: ", "italic"), format_friendship(state_after_actions["avg_friendship"]),
             )
             console.print(Padding(progress_text, (0, 0, 1, 0)), style="on grey19") # Added bottom padding
 
         # If the day was NOT advanced by an agent's ADVANCE_DAY action during its turns,
         # and the environment's current day is still effectively `day_idx`, advance it now.
-        if not day_was_advanced_by_agent and env.get_state()["current_day"] == day_idx:
+        if not day_was_advanced_by_agent and env.get_state()["current_day"] == current_env_state_at_loop_start["current_day"]:
             env.advance_day_cycle()
-            console.print(f"    End of day {day_idx} reached. Advancing to day {env.get_state()['current_day']}, Date: {env.get_state()['current_date']}.")
     # --- End of Simulation ---
     # Final summary at the end of the simulation
 
@@ -303,6 +386,7 @@ if __name__ == "__main__":
     )
     try:
         # Example: Simulate for a small number of days to see rich output
-        run_simulation(days_to_simulate=15)
+        # Allow all villagers to act each day (actions_per_day=None)
+        run_simulation(days_to_simulate=5, actions_per_day=None)
     except Exception:
         console.print_exception(show_locals=True)

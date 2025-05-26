@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 class ACNHVillager:
     def __init__(self, name):
         self.name = name
-        self.friendship_level = 0
+        self.friendship_level = 10
         self.bells = 0
         self.nook_miles = 0
         self.last_gifted_day = -1
@@ -28,8 +28,31 @@ class ACNHVillager:
             return True
         return False
 
-    def add_to_inventory(self, item_name, quantity=1):
-        self.inventory[item_name] = self.inventory.get(item_name, 0) + quantity
+    def add_to_inventory(self, item_name_or_data, quantity=1):
+        """
+        Adds an item to the villager's inventory.
+        item_name_or_data can be a string (the item's name) or a dictionary
+        from which the item's name can be extracted (e.g., from a 'name' key).
+        """
+        actual_item_name = None
+        if isinstance(item_name_or_data, dict):
+            # If it's a dictionary, try to get the name from a 'name' key
+            actual_item_name = item_name_or_data.get("Name")
+            if actual_item_name is None:
+                # If 'name' key is not found or is None, this is an unexpected dict structure
+                raise ValueError(f"If item_name_or_data is a dict, it must have a 'name' key with a string value. Got: {item_name_or_data}")
+        elif isinstance(item_name_or_data, str):
+            actual_item_name = item_name_or_data
+        else:
+            # If it's neither a dict nor a string, it's an unsupported type
+            raise TypeError(f"item_name_or_data must be a string or a dictionary, but got {type(item_name_or_data)}")
+
+        if not isinstance(actual_item_name, str) or not actual_item_name:
+            # Ensure the extracted name is a non-empty string
+            raise ValueError(f"Could not determine a valid string item name from: {item_name_or_data}")
+
+        print(self.inventory)
+        self.inventory[actual_item_name] = self.inventory.get(actual_item_name, 0) + quantity
 
     def remove_from_inventory(self, item_name, quantity=1):
         if item_name in self.inventory and self.inventory[item_name] >= quantity:
