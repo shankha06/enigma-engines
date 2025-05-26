@@ -5,6 +5,8 @@ import datetime
 import csv
 import os
 
+from enigma_engines.animal_crossing.data_simulation import generate_crops_dataset
+
 # --- 1. ACNH Item Dataset with CSV Loading ---
 class ACNHItemDataset:
     """
@@ -174,147 +176,92 @@ class ACNHItemDataset:
 
     
     def _load_nook_miles_tasks(self):
-        """Loads Nook Miles task templates from achievements.csv, including criteria, with diagnostic logging."""
+        """Loads Nook Miles task templates from achievements.csv, including criteria."""
         tasks = {}
         try:
-            achievements_data = self._load_csv_data("achievements.csv") 
+            # Assuming self._load_csv_data is part of the same class
+            # and correctly returns a list of dictionaries (each dict is a row)
+            achievements_data = self._load_csv_data("achievements.csv")
             if not achievements_data:
-                print("DEBUG: achievements.csv loaded no data or was not found. No Nook Miles tasks will be available.")
+                print("Warning: achievements.csv is empty or could not be loaded. No Nook Miles tasks will be available.")
                 return {}
-            
-            print(f"DEBUG: Processing {len(achievements_data)} rows from achievements.csv for Nook Miles tasks.")
 
-            for i, achievement in enumerate(achievements_data):
-                print(f"\nDEBUG: Processing achievement row {i+1}: {achievement}")
+            for achievement in achievements_data:
                 base_task_name = achievement.get("Internal Name")
                 if not base_task_name:
-                    print(f"DEBUG: Row {i+1} skipped: 'Internal Name' is missing or empty.")
-                    continue 
-                print(f"DEBUG: Row {i+1}: Base task name: '{base_task_name}'")
+                    print(f"Skipping achievement due to missing 'Internal Name': {achievement.get('Name')}")
+                    continue
 
-                internal_category_for_achievement = achievement.get("Internal Category")
-                print(f"DEBUG: Row {i+1}: Internal Category: '{internal_category_for_achievement}'")
+                internal_category = achievement.get("Internal Category")
+                award_criteria_text = achievement.get("Award Criteria", "") # Full text description
 
-                num_tiers_str = str(achievement.get("Num of Tiers", "1"))
+                num_tiers_str = str(achievement.get("Num of Tiers", "1")).strip()
                 num_tiers = 1
-                # Ensure '0' tiers is not treated as 1, and handle non-digit strings gracefully.
-                if num_tiers_str.strip().isdigit() and int(num_tiers_str.strip()) > 0:
-                    num_tiers = int(num_tiers_str.strip())
-                print(f"DEBUG: Row {i+1}: Parsed num_tiers: {num_tiers} (from CSV value '{achievement.get('Num of Tiers', '1')}')")
-                
-                task_added_in_tier_loop = False # Flag to track if task was added via specific tier logic
+                if num_tiers_str.isdigit() and int(num_tiers_str) > 0:
+                    num_tiers = int(num_tiers_str)
+                elif num_tiers_str: # Non-empty but not a positive digit
+                    print(f"Warning: Invalid 'Num of Tiers' ('{num_tiers_str}') for {base_task_name}. Defaulting to 1 tier.")
+
 
                 for tier_num in range(1, num_tiers + 1):
-                    print(f"DEBUG: Row {i+1}, Tier {tier_num}: Checking for miles...")
                     miles_val = None
-                    miles_col_names = [
-                        f"Tier {tier_num} Nook Miles", f"Tier{tier_num} Nook Miles",
-                        f"Tier {tier_num} Internal Nook Miles", f"Tier{tier_num} Internal Nook Miles"
-                    ]
-                    for col_name in miles_col_names:
-                        val_str = achievement.get(col_name)
-                        if val_str is not None and str(val_str).strip().isdigit(): # Check if it's a string of digits
-                            parsed_miles = int(str(val_str).strip())
-                            if parsed_miles > 0: # Only consider positive miles
-                                miles_val = parsed_miles
-                                print(f"DEBUG: Row {i+1}, Tier {tier_num}: Found positive miles: {miles_val} from column '{col_name}'.")
-                                break 
-                            else: # If miles is 0 or negative, reset miles_val to continue search
-                                print(f"DEBUG: Row {i+1}, Tier {tier_num}: Found non-positive miles value ({parsed_miles}) in column '{col_name}'.")
-                                miles_val = None 
-                        elif val_str is not None:
-                            print(f"DEBUG: Row {i+1}, Tier {tier_num}: Value '{val_str}' in column '{col_name}' is not a valid digit string for miles.")
+                    # Corrected column name for Nook Miles rewards
+                    reward_col_name = f"Reward Tier {tier_num}"
+                    val_str = achievement.get(reward_col_name)
+
+                    if val_str is not None and val_str.strip().isdigit():
+                        miles_val = int(val_str.strip())
+                        if miles_val <= 0: # Ignore non-positive miles values
+                            miles_val = None
                     
-                    if miles_val is None or miles_val <= 0: 
-                        print(f"DEBUG: Row {i+1}, Tier {tier_num}: Skipped. No positive miles found for this tier after checking all relevant columns.")
+                    if miles_val is None:
+                        # If no miles for this specific tier, or miles are 0, skip this tier for this achievement
+                        # print(f"Debug: No valid miles found for {base_task_name} Tier {tier_num} in column {reward_col_name}. Value: '{val_str}'")
                         continue
 
                     task_name_to_use = f"{base_task_name} (Tier {tier_num})" if num_tiers > 1 else base_task_name
                     
                     criteria = {
-                        "type": achievement.get(f"Tier {tier_num} Criteria Type"),
-                        "item_name": achievement.get(f"Tier {tier_num} Criteria Item Name"),
-                        "quantity": None,
-                        "category": internal_category_for_achievement 
+                        "description": award_criteria_text, # General description
+                        "category": internal_category,
+                        "quantity": None, # Will be filled from "Tier X" column
+                        # "type" and "item_name" are harder to generically derive from this CSV per tier
+                        # and might need specific logic per Internal Category if required.
                     }
-                    quantity_str = achievement.get(f"Tier {tier_num} Criteria Quantity")
-                    if quantity_str and str(quantity_str).strip().isdigit():
-                        criteria["quantity"] = int(str(quantity_str).strip())
-                    
-                    duration_days_str = achievement.get(f"Tier {tier_num} Duration Days", "1")
-                    duration_days = 1
-                    if duration_days_str and str(duration_days_str).strip().isdigit() and int(str(duration_days_str).strip()) > 0:
-                        duration_days = int(str(duration_days_str).strip())
 
-                    # Logic for adding task based on criteria presence
-                    if criteria["type"] or any(v is not None for k, v in criteria.items() if k != 'type' and k != 'quantity' or (k == 'quantity' and v is not None)):
-                        tasks[task_name_to_use] = {
-                            "miles": miles_val, "criteria": criteria, "duration_days": duration_days
-                        }
-                        task_added_in_tier_loop = True
-                        print(f"DEBUG: Row {i+1}, Tier {tier_num}: Task '{task_name_to_use}' ADDED with criteria. Miles: {miles_val}.")
-                    elif not criteria["type"] and all(v is None for k,v in criteria.items() if k != 'type'): # All criteria fields are None
-                         tasks[task_name_to_use] = {
-                            "miles": miles_val, "criteria": None, "duration_days": duration_days
-                        }
-                         task_added_in_tier_loop = True
-                         print(f"DEBUG: Row {i+1}, Tier {tier_num}: Task '{task_name_to_use}' ADDED with NO criteria. Miles: {miles_val}.")
-                    else:
-                        print(f"DEBUG: Row {i+1}, Tier {tier_num}: Task '{task_name_to_use}' NOT added despite having miles, criteria check failed. Criteria: {criteria}")
+                    # Corrected column name for criteria quantity
+                    quantity_col_name = f"Tier {tier_num}"
+                    quantity_str = achievement.get(quantity_col_name)
+                    if quantity_str and quantity_str.strip().isdigit():
+                        criteria["quantity"] = int(quantity_str.strip())
+                    elif quantity_str and quantity_str.strip(): # If quantity is not a number but present (e.g. for event type)
+                         # For some tasks (like the first sample "ImmigratetoIsland"), Tier 1 = 1 might mean 'completed once'.
+                         # If it's just an event flag, an explicit quantity might not always be numeric in the same sense.
+                         # For simplicity, we'll try to parse as int, otherwise leave as None or handle based on category.
+                         # Here, we'll assume if it's not a digit, it's not a countable quantity for now.
+                         pass
 
 
-                if not task_added_in_tier_loop:
-                    print(f"DEBUG: Row {i+1}: No task added via tier loop for '{base_task_name}'.")
-                    if num_tiers == 1: # Fallback only for achievements defined as single-tier or defaulting to 1 tier
-                        print(f"DEBUG: Row {i+1}: Checking fallback for single-tier achievement '{base_task_name}'.")
-                        general_miles_cols = ["Nook Miles", "Total Nook Miles"]
-                        miles_val_general = None
-                        for col in general_miles_cols:
-                            val_str = achievement.get(col)
-                            if val_str is not None and str(val_str).strip().isdigit():
-                                parsed_general_miles = int(str(val_str).strip())
-                                if parsed_general_miles > 0: # Found positive general miles
-                                    miles_val_general = parsed_general_miles
-                                    print(f"DEBUG: Row {i+1}: Fallback found positive general miles: {miles_val_general} from column '{col}'.")
-                                    break
-                                else: # If general miles is 0 or negative, reset to continue search
-                                    print(f"DEBUG: Row {i+1}: Fallback found non-positive general miles value ({parsed_general_miles}) in column '{col}'.")
-                            elif val_str is not None:
-                                print(f"DEBUG: Row {i+1}: Fallback value '{val_str}' in column '{col}' is not a valid digit string for miles.")
-                        
-                        if miles_val_general and miles_val_general > 0:
-                            fallback_criteria = None
-                            if internal_category_for_achievement: # Use "Internal Category" if present
-                                fallback_criteria = {"category": internal_category_for_achievement}
-                            
-                            duration_days_fallback_str = achievement.get("Duration Days", "1") 
-                            duration_days_fallback = 1
-                            if duration_days_fallback_str and str(duration_days_fallback_str).strip().isdigit() and int(str(duration_days_fallback_str).strip()) > 0:
-                                duration_days_fallback = int(str(duration_days_fallback_str).strip())
+                    # Duration is not in the sample CSV, defaulting to 1 as in original code.
+                    # If you add a "Duration Days Tier X" or similar column, you can parse it here.
+                    duration_days = 1 
 
-                            tasks[base_task_name] = {
-                                "miles": miles_val_general,
-                                "criteria": fallback_criteria, 
-                                "duration_days": duration_days_fallback
-                            }
-                            print(f"DEBUG: Row {i+1}: Fallback task '{base_task_name}' ADDED. Miles: {miles_val_general}.")
-                        else:
-                             print(f"DEBUG: Row {i+1}: Fallback task for '{base_task_name}' not added (no valid positive general miles found).")
-                            
+                    tasks[task_name_to_use] = {
+                        "public_name": achievement.get("Name", base_task_name), # User-friendly name
+                        "miles": miles_val,
+                        "criteria": criteria,
+                        "duration_days": duration_days,
+                        "internal_id": achievement.get("Internal ID"),
+                        "sequential": achievement.get("Sequential", "No").lower() == "yes"
+                    }
+            
         except Exception as e:
-            print(f"CRITICAL ERROR during Nook Miles task processing: {e}")
+            print(f"Unexpected error processing achievements.csv for Nook Miles tasks: {e}")
             import traceback
-            print(traceback.format_exc())
+            print(traceback.format_exc()) # Helpful for debugging during development
         
-        if not tasks and achievements_data:
-            print("\nDEBUG_SUMMARY: No Nook Miles tasks were populated into the 'tasks' dictionary after processing all achievement rows.")
-            print("DEBUG_SUMMARY: This typically means no achievements met the criteria (e.g., having a positive 'Nook Miles' value in expected columns AND a valid 'Internal Name').")
-            print("DEBUG_SUMMARY: Please review the detailed DEBUG messages above for each row and check your 'achievements.csv' data against the expected column names (case-sensitive) and ensure miles values are positive integers.")
-        elif tasks:
-            print(f"\nDEBUG_SUMMARY: Successfully populated {len(tasks)} Nook Miles tasks.")
-        
-        # Final filter: ensure all returned tasks have positive miles.
-        return {name: details for name, details in tasks.items() if details.get("miles", 0) > 0}
+        # Final filter: ensure all returned tasks have positive miles (already handled by miles_val <= 0 check)
+        return tasks
 
 
 
@@ -346,11 +293,15 @@ class ACNHItemDataset:
         try:
             crop_data_raw = self._load_csv_data("crops.csv", 
                                              required_columns=["Name", "GrowthTimeDays", "SellPrice", "SeedCost", "Yield"])
-            if not crop_data_raw: return {}
+            if not crop_data_raw: 
+                generate_crops_dataset()
+                crop_data_raw = self._load_csv_data("crops.csv", 
+                                             required_columns=["Name", "GrowthTimeDays", "SellPrice", "SeedCost", "Yield"])
 
             for crop_item in crop_data_raw:
                 name = crop_item.get("Name")
-                if not name: continue
+                if not name:
+                    continue
                 try:
                     crop_defs[name] = {
                         "Name": name,

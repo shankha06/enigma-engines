@@ -1,0 +1,16 @@
+Name,GrowthTimeDays,SellPrice,SeedCost,Yield
+Sugarcane,5,45,18,3
+Potato,5,39,11,3
+Onion,3,31,9,1
+Tomato,4,30,10,4
+Grape,8,98,32,3
+Lettuce,3,14,5,1
+Carrot,4,26,7,1
+Blueberry,10,143,52,4
+Strawberry,9,121,42,2
+Watermelon,11,251,76,1
+Wheat,8,19,4,5
+Pumpkin,10,358,110,1
+Bell Pepper,9,94,37,3
+Cauliflower,8,191,73,1
+Corn,9,83,33,3
