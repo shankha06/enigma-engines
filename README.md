@@ -1,7 +1,7 @@
 <style>
     .content {
-        margin : 0 auto;
-        width: calc(80%-200px);
+        margin: 0 auto;
+        width: calc(80% - 100px); /* Corrected: Added spaces around the minus operator */
     }
 </style>
 
