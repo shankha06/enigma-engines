@@ -32,6 +32,24 @@ client = OpenSearch(
 
 # --- 3. Define Index Mapping for k-NN ---
 def create_index_with_knn_mapping():
+    """
+This script demonstrates how to set up and use OpenSearch for k-NN vector search.
+
+It covers:
+1.  **Configuration**: Setting up OpenSearch connection parameters,
+    including authentication (basic or AWS IAM).
+2.  **Client Initialization**: Creating an OpenSearch client instance.
+3.  **Index Creation**: Defining and creating an OpenSearch index with a
+    k-NN vector field mapping, specifying algorithm (HNSW), space type,
+    and engine.
+4.  **Data Preparation**: Generating sample documents with random vector
+    embeddings and associated metadata.
+5.  **Bulk Indexing**: Indexing the generated documents into OpenSearch
+    in bulk.
+
+The main execution block orchestrates these steps, creating the index if it
+doesn't exist, generating sample data, and then indexing it.
+"""
     if not client.indices.exists(index=INDEX_NAME):
         index_body = {
             "settings": {
@@ -74,7 +92,7 @@ def create_index_with_knn_mapping():
         print(f"Index '{INDEX_NAME}' already exists.")
 
 # --- 4. Prepare Sample Embeddings and Documents ---
-def generate_sample_documents(num_docs=100):
+def generate_sample_documents(num_docs:int =100):
     documents = []
     for i in range(num_docs):
         # Replace this with your actual embedding generation
