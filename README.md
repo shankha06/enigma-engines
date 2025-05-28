@@ -20,7 +20,7 @@ We welcome contributions! Please fork the repository and submit a pull request. 
 
 ## 📝 License
 
-This project is licensed under the terms of the [MIT License](LICENSE). You are free to use, modify, and distribute this code as long as you comply with the license terms.
+This project is licensed under the terms of the [GNU Public License](LICENSE). You are free to use, modify, and distribute this code as long as you comply with the license terms.
 
 ---
 
