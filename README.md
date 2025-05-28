@@ -10,7 +10,7 @@ Welcome to the Enigma Engines. It is collection of Engines which I play on spare
 
 Setup is using uv package manager.
 ```bash
-uv sync && uv pip install -e .
+uv sync --all-groups && uv pip install -e .
 uv run python enigma_engines/animal_crossing/simulation.py
 ```
 

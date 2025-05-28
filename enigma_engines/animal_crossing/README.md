@@ -243,7 +243,7 @@ The simulation progresses through a conceptual daily cycle, driven by an externa
 
 Setup is using uv package manager.
 ```bash
-uv sync && uv pip install -e .
+uv sync --all-groups && uv pip install -e .
 uv run enigma_engines/animal_crossing/simulation.py
 ```
 
