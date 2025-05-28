@@ -31,6 +31,10 @@ test = [
     "tomli>=2.0.1",
     "jinja2>=3.1.6"
 ]
+infra = [
+    "boto3>=1.38.24",
+    "opensearch-py>=2.8.0",
+]
 
 [tool.setuptools]
 # No package-dir needed for flat layout if packages are in root
