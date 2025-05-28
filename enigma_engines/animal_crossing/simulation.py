@@ -1,7 +1,10 @@
 # --- 5. Simulation Loop ---
-from enigma_engines.animal_crossing.core.agent import Multi_Objective_Agent
-from enigma_engines.animal_crossing.core.environment import ACNHEnvironment
-from enigma_engines.animal_crossing.core.load_data import ACNHItemDataset
+try:
+    from enigma_engines.animal_crossing.core.agent import Multi_Objective_Agent
+    from enigma_engines.animal_crossing.core.environment import ACNHEnvironment
+    from enigma_engines.animal_crossing.core.load_data import ACNHItemDataset
+except ImportError as e:
+    raise ImportError(f"Required module could not be imported: {e}")
 
 # Rich library imports
 from rich.console import Console
@@ -242,7 +245,7 @@ def _display_daily_report(
     _print_day_summary_panel(console_instance, day_panel_title, day_info)
 
 
-def run_simulation(days_to_simulate, actions_per_day=None):
+def run_simulation(days_to_simulate:int, actions_per_day:int = None):
     """
     Run the Animal Crossing simulation with per-villager actions.
     

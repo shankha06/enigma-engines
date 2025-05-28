@@ -1,11 +1,10 @@
 [project]
 name = "enigma-engines"
 version = "0.1.0"
-description = "Add your description here"
+description = "Welcome to the Enigma Engines."
 authors = [{ name = "Shankhadeep Roy", email = "shankharay.917@gmail.com" }]
 readme = "README.md"
 keywords = ['python']
-requires-python = ">=3.13,<4.0"
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
@@ -23,6 +22,11 @@ dependencies = [
     "rich>=14.0.0",
     "ruff>=0.11.0",
     "seaborn>=0.13.2",
+    "mkdocs>=1.4.2",
+    "mkdocs-material>=8.5.10",
+    "mkdocstrings[python]>=0.26.1",
+    "pymdown-extensions>=10.15",
+    "markdown>=3.8",
 ]
 
 
@@ -49,13 +53,11 @@ dev = [
     "pytest>=7.2.0",
     "pre-commit>=2.20.0",
     "tox-uv>=1.11.3",
-    
     "mypy>=0.991",
-    
     "ruff>=0.11.5",
-    "mkdocs>=1.4.2",
-    "mkdocs-material>=8.5.10",
-    "mkdocstrings[python]>=0.26.1",
+    "mkdocs-awesome-nav>=3.1.2",
+    "mkdocs-awesome-pages-plugin>=2.10.1",
+    "mkdocs-mermaid2-plugin>=1.2.1",
 ]
 infra = [
     "boto3>=1.38.24",
@@ -89,9 +91,6 @@ check_untyped_defs = true
 warn_return_any = true
 warn_unused_ignores = true
 show_error_codes = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
 
 [tool.ruff]
 target-version = "py39"

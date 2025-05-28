@@ -244,12 +244,12 @@ The simulation progresses through a conceptual daily cycle, driven by an externa
 Setup is using uv package manager.
 ```bash
 uv sync && uv pip install -e .
-uv run python enigma_engines\animal_crossing\simulation.py
+uv run enigma_engines/animal_crossing/simulation.py
 ```
 
 ## 🤝 Contributing
 
-We welcome contributions! Please fork the repository and submit a pull request. Please ensure your changes are well-documented and include tests if applicable. Contributions are highly appreciated.
+Please contribute and make this a library useful for every ML Engineer.! Please follow the guidelines provided in [Contributing](../../CONTRIBUTING.md) to raise PR for merging into main merge.
 
 ## 📝 License
 

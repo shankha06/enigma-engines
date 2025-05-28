@@ -1,52 +1,205 @@
+# -- Site Information ----------------------------------------------------------
 site_name: enigma-engines
 repo_url: https://github.com/shankha06/enigma-engines
-site_url: https://shankha06.github.io/enigma-engines
-site_description: This is a template repository for Python projects that use uv for their dependency management.
+site_url: https://shankha06.github.io/enigma-engines # Ensure this is correct for deployment
+site_description: "Explore Enigma Engines: A Python-based collection of machine learning experiments."
 site_author: Shankhadeep Roy
-edit_uri: edit/main/docs/
-repo_name: shankha06/enigma-engines
-copyright: Maintained by <a href="https://shankha06.com">shankha06</a>.
+copyright: 'Copyright &copy; 2024 - Present Shankhadeep Roy. Maintained by <a href="https://shankha06.com" target="_blank" rel="noopener">shankha06</a>.' # Added target and rel for external link
 
+# -- Repository ----------------------------------------------------------------
+repo_name: shankha06/enigma-engines
+edit_uri: edit/main/docs/
+
+# -- Navigation ----------------------------------------------------------------
 nav:
   - Home: index.md
-  - Modules: modules.md
-plugins:
-  - search
-  - mkdocstrings:
-      handlers:
-        python:
-          paths: ["enigma_engines"]
+  - 'User Guide':
+    - 'Installation': 'guides/installation.md' # Example: Create these files
+    - 'Quick Start': 'guides/quickstart.md'
+  - 'API Reference': # Clearer name for code documentation
+    - 'Modules': 'modules.md'
+  - 'Contributing': 'CONTRIBUTING.md'
+  # - 'Changelog': 'changelog.md'
+
+# -- Theme Configuration -------------------------------------------------------
 theme:
   name: material
-  feature:
-    tabs: true
+  language: en # Explicitly set language
+  features:
+    - navigation.tabs # Already have this
+    - navigation.tabs.sticky # Makes tabs sticky on scroll - good for longer pages
+    - navigation.sections # Expands sections in the nav bar - useful if nav gets deeper
+    - navigation.expand # Expands all navigation items on load - consider if your nav is not too large
+    - navigation.top # Adds a "Back to top" button
+    - navigation.indexes # Enables index pages for sections (e.g., a landing page for 'User Guide')
+    - navigation.instant # Enables instant loading, making navigation feel faster
+    # - navigation.tracking # Shows current location in nav - useful for deep nav
+    - toc.integrate # Integrates Table of Contents into the left navigation sidebar instead of the right
+    - search.suggest # Search auto-completion
+    - search.highlight # Highlights search terms on target page
+    - search.share # Allows sharing search results
+    - content.tabs.link # Link to specific tabs in content
+    - content.code.annotate # Allows annotations on code blocks (great for explanations)
+    - content.code.copy # Adds a copy button to code blocks
+    - header.autohide # Hides header on scroll down, shows on scroll up - personal preference
+    - announce.dismiss # If you use the announcement bar feature
+
   palette:
+    # Light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: white
-      accent: deep orange
+      primary: indigo # Consider a color that offers good contrast, e.g., indigo, blue, teal
+      accent: amber # A contrasting accent color
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
+    # Dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: black
-      accent: deep orange
+      primary: blue grey # Darker primary for slate
+      accent: amber
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+
+  font:
+    text: Roboto # Default, but you can specify
+    code: Roboto Mono
+
   icon:
     repo: fontawesome/brands/github
+    # You can add custom icons for adomnitions etc. if needed
+    admonitor:
+      note: octicons/tag-16
+      abstract: octicons/checklist-16
 
-extra:
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/shankha06/enigma-engines
-    - icon: fontawesome/brands/python
-      link: https://pypi.org/project/enigma-engines
+# -- Plugins -------------------------------------------------------------------
+plugins:
+  - search # Ensure this is here for the search features above
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            # --- Readability options for mkdocstrings ---
+            show_root_heading: true # Shows a heading for the root object (e.g., the module itself)
+            show_root_toc_entry: true # Adds the root object to the Table of Contents
+            show_root_full_path: false # Avoid overly long titles for root
+            show_category_heading: true # Group by "Functions", "Classes", etc.
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            # heading_level: 2 # Default, adjust if needed
+            members_order: 'alphabetical'
+            show_signature_annotations: true # Show type hints in signatures
+            separate_signature: true # Puts signature on a new line, can be more readable for long signatures
+            line_length: 80 # For formatting docstrings if they are very long
+            list_class_variables_in_summary: true # If you want to see class vars in the summary list
+            # show_if_no_docstring: true # If you want to list members even if they lack docstrings
+          paths: ["enigma_engines"] # Make sure this path is relative to your mkdocs.yml or an absolute path
+  # - tags # For creating a tags index page, allowing users to find content by tags
+  # - social # Already in extra, but material has its own social plugin if preferred
+  # - redirects: # If you move pages, helps maintain links
+  #     redirect_maps:
+  #       'old_page.md': 'new_page.md'
+  - awesome-pages # For more control over navigation structure without manually listing every file (optional)
 
+# -- Markdown Extensions -------------------------------------------------------
 markdown_extensions:
+  # Standard Markdown
   - toc:
-      permalink: true
-  - pymdownx.arithmatex:
+      permalink: true # Adds a permalink icon to headings
+      slugify: !!python/name:pymdownx.slugs.uslugify # Better slugification for non-ASCII characters
+      toc_depth: 3 # Adjust table of contents depth as needed (2-4 is common)
+  - admonition # Crucial for notes, warnings, tips
+  - attr_list # For adding HTML attributes (e.g., classes, IDs) to Markdown elements
+  - md_in_html # Allows Markdown processing inside HTML blocks
+  - sane_lists # For more consistent list rendering
+
+  # PyMdownx Extensions (ensure pymdownx is installed: pip install pymdownx)
+  - pymdownx.arithmatex: # Already have this
       generic: true
+  - pymdownx.betterem: # Improved emphasis handling (bold, italic)
+      smart_enable: all
+  - pymdownx.caret # For ^^insert^^ and ^delete^
+  - pymdownx.details # For collapsible sections (great for hiding lengthy details)
+  - pymdownx.emoji: # For :emoji: shortcodes
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight: # For code highlighting
+      anchor_linenums: true # Add anchors to line numbers
+      line_spans: __span # For targeting specific lines via CSS if needed
+      pygments_lang_class: true # Adds language class to pygments blocks
+      use_pygments: true # Ensure Pygments is used
+  - pymdownx.keys: # For rendering keyboard keys like ++ctrl+alt+delete++
+      separator: "\uff0b" # Use a plus symbol
+  - pymdownx.mark # For ==highlighted text==
+  - pymdownx.smartsymbols # Converts ... to ellipses, --- to em-dashes, etc.
+  - pymdownx.superfences: # Powerful code blocks, allows nesting, mermaid diagrams
+      custom_fences:
+        - name: mermaid # For Mermaid diagrams
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.snippets: # Include content from other files
+      auto_append:
+        - 'includes/abbreviations.md' # Example: if you have a global list of abbreviations
+  - pymdownx.tabbed: # For creating tabbed content sections
+      alternate_style: true # Uses a slightly different visual style for tabs
+  - pymdownx.tasklist: # For task lists - [x] Done - [ ] Not done
+      custom_checkbox: true
+  - pymdownx.tilde # For ~~strikethrough~~
+
+  # JavaScript for Arithmatex (MathJax)
+  # Ensure you have this if you use pymdownx.arithmatex extensively
+extra_javascript:
+  - javascripts/mathjax.js # Create this file (see below)
+  - https://polyfill.io/v3/polyfill.min.js?features=es6 # For older browser compatibility
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js # MathJax CDN
+
+# -- Extra Customization -------------------------------------------------------
+extra:
+  social: # Good, keep this
+    - icon: fontawesome/brands/github
+      link: https://github.com/shankha06
+      name: GitHub Profile # Add a name for tooltip
+    - icon: fontawesome/brands/python # PyPI project link
+      link: https://pypi.org/project/enigma-engines
+      name: PyPI Package
+    - icon: fontawesome/solid/globe # Personal website/blog
+      link: https://shankha06.com
+      name: Personal Website
+  # version: # If you want to display a version switcher or current version
+  #   provider: mike
+  #   default: latest
+  analytics: # Optional: If you use Google Analytics
+    provider: google
+    property: G-XXXXXXXXXX # Your Google Analytics Measurement ID
+  # consent: # For GDPR compliance, if using cookies (e.g., analytics, disqus)
+  #   title: Cookie consent
+  #   description: >-
+  #     We use cookies to recognize your repeated visits and preferences, as well
+  #     as to measure the effectiveness of our documentation and whether users
+  #     find what they're searching for. With your consent, you're helping us to
+  #     make our documentation better.
+
+extra_css:
+  - stylesheets/extra.css # For custom CSS tweaks (create docs/stylesheets/extra.css)
+
+# -- For pymdownx.arithmatex (MathJax) -----------------------------------------
+# Create a file `docs/javascripts/mathjax.js` with the following content:
+# window.MathJax = {
+#   tex: {
+#     inlineMath: [["\\(", "\\)"]],
+#     displayMath: [["\\[", "\\]"]],
+#     processEscapes: true,
+#     processEnvironments: true
+#   },
+#   options: {
+#     ignoreHtmlClass: ".*|",
+#     processHtmlClass: "arithmatex"
+#   }
+# };
+
+# -- Optional: For mkdocs-tags plugin ------------------------------------------
+# If you add the 'tags' plugin:
+extra:
+  tags:
+    tags_file: 'tags.md' # Optional: specify the file for the tags index

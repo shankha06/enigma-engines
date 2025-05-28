@@ -1,5 +1,5 @@
 # Install uv
-FROM python:3.12-slim
+FROM python:3.13-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 # Change the working directory to the `app` directory
@@ -18,4 +18,4 @@ COPY . /app
 # Sync the project
 RUN uv sync --frozen
 
-CMD [ "python", "enigma_engines/foo.py" ]
+CMD [ "python", "enigma_engines/animal_crossing/simulation.py" ]
