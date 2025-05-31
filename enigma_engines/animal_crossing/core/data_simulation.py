@@ -165,5 +165,5 @@ def generate_crops_dataset(file_path="data/crops.csv", num_crops=15):
             writer.writerow(headers)
             writer.writerows(crops_data)
         print(f"Successfully generated and saved crops dataset to {file_path}")
-    except IOError:
+    except OSError:
         print(f"Error: Could not write to {file_path}")

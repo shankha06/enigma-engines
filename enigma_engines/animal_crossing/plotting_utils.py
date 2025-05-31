@@ -1,5 +1,5 @@
-import seaborn as sns
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 def plot_simulation_results(rewards_log):
@@ -16,7 +16,7 @@ def plot_simulation_results(rewards_log):
     num_days = 0
     # Check a few common keys to find the length of the simulation
     for key in ["bells", "nook_miles", "friendship"]:
-        if key in rewards_log and rewards_log[key]:
+        if rewards_log.get(key):
             num_days = len(rewards_log[key])
             break
 

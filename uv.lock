@@ -1,5 +1,4 @@
 version = 1
-revision = 1
 requires-python = ">=3.13"
 
 [[package]]
@@ -179,7 +178,7 @@ name = "click"
 version = "8.2.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "platform_system == 'Windows'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/60/6c/8ca2efa64cf75a977a0d7fac081354553ebe483345c734fb6b6515d96bbc/click-8.2.1.tar.gz", hash = "sha256:27c491cc05d968d271d5a1db13e3b5a184636d9d930f148c50b038f0d0646202", size = 286342 }
 wheels = [
@@ -299,6 +298,7 @@ dependencies = [
     { name = "mkdocstrings", extra = ["python"] },
     { name = "openpyxl" },
     { name = "pandas" },
+    { name = "pydantic" },
     { name = "pymdown-extensions" },
     { name = "rich" },
     { name = "ruff" },
@@ -357,6 +357,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.2.3" },
     { name = "pandas", marker = "extra == 'reco'", specifier = ">=2.2.3" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=2.20.0" },
+    { name = "pydantic", specifier = ">=2.11.5" },
     { name = "pymdown-extensions", specifier = ">=10.15" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3.5" },
@@ -369,7 +370,6 @@ requires-dist = [
     { name = "tomli", marker = "extra == 'dev'", specifier = ">=2.0.1" },
     { name = "tox-uv", marker = "extra == 'dev'", specifier = ">=1.11.3" },
 ]
-provides-extras = ["reco", "dev", "infra"]
 
 [[package]]
 name = "et-xmlfile"
@@ -697,7 +697,7 @@ version = "1.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
-    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "colorama", marker = "platform_system == 'Windows'" },
     { name = "ghp-import" },
     { name = "jinja2" },
     { name = "markdown" },

@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Welcome to the Enigma Engines."
 authors = [{ name = "Shankhadeep Roy", email = "shankharay.917@gmail.com" }]
 readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT License" }
 keywords = ['python']
 classifiers = [
     "Intended Audience :: Developers",
@@ -27,6 +29,7 @@ dependencies = [
     "mkdocstrings[python]>=0.26.1",
     "pymdown-extensions>=10.15",
     "markdown>=3.8",
+    "pydantic>=2.11.5",
 ]
 
 

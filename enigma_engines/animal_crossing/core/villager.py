@@ -21,7 +21,7 @@ class ACNHVillager:
         self.friendship_level = min(255, self.friendship_level + points)
         self.last_gifted_day = current_day
         return points
-    
+
     def give_gift(self, item_name: str, quantity: int = 1):
         if item_name in self.inventory and self.inventory[item_name] >= quantity:
             self.remove_from_inventory(item_name, quantity)
@@ -40,19 +40,27 @@ class ACNHVillager:
             actual_item_name = item_name_or_data.get("Name")
             if actual_item_name is None:
                 # If 'name' key is not found or is None, this is an unexpected dict structure
-                raise ValueError(f"If item_name_or_data is a dict, it must have a 'name' key with a string value. Got: {item_name_or_data}")
+                raise ValueError(
+                    f"If item_name_or_data is a dict, it must have a 'name' key with a string value. Got: {item_name_or_data}"
+                )
         elif isinstance(item_name_or_data, str):
             actual_item_name = item_name_or_data
         else:
             # If it's neither a dict nor a string, it's an unsupported type
-            raise TypeError(f"item_name_or_data must be a string or a dictionary, but got {type(item_name_or_data)}")
+            raise TypeError(
+                f"item_name_or_data must be a string or a dictionary, but got {type(item_name_or_data)}"
+            )
 
         if not isinstance(actual_item_name, str) or not actual_item_name:
             # Ensure the extracted name is a non-empty string
-            raise ValueError(f"Could not determine a valid string item name from: {item_name_or_data}")
+            raise ValueError(
+                f"Could not determine a valid string item name from: {item_name_or_data}"
+            )
 
         print(self.inventory)
-        self.inventory[actual_item_name] = self.inventory.get(actual_item_name, 0) + quantity
+        self.inventory[actual_item_name] = (
+            self.inventory.get(actual_item_name, 0) + quantity
+        )
 
     def remove_from_inventory(self, item_name, quantity=1):
         if item_name in self.inventory and self.inventory[item_name] >= quantity:
