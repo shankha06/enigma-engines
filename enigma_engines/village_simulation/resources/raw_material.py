@@ -68,3 +68,31 @@ fabric = RawMaterial(
     weight=0.2,  # e.g., per meter
     icon="🧵",
 )
+
+# Additional raw materials needed by villager.py
+wood = RawMaterial(
+    name="Wood Log",
+    base_value=0.5,
+    material_type="wood",
+    description="A freshly cut log from the forest.",
+    weight=10.0,
+    icon="🪵",
+)
+
+raw_hide = RawMaterial(
+    name="Raw Hide",
+    base_value=1.0,
+    material_type="skin",
+    description="Raw animal hide that can be processed into leather.",
+    weight=2.0,
+    icon="🦌",
+)
+
+herbs = RawMaterial(
+    name="Herbs",
+    base_value=0.4,
+    material_type="plant",
+    description="Various medicinal and culinary herbs.",
+    weight=0.1,
+    icon="🌿",
+)

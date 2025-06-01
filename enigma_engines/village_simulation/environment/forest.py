@@ -1,426 +1,500 @@
-import random
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
-
 from pydantic import BaseModel, Field
+from typing import Optional, Dict, List, Tuple, Any # Any for WeatherSystem if not strictly typed yet
+import random
+import math
 
-from enigma_engines.village_simulation.agents.villager import Villager
-from enigma_engines.village_simulation.resources.food import (
-    Food,
-    roast_meat,
-)
-from enigma_engines.village_simulation.resources.raw_material import (
-    RawMaterial,
-    fabric,
-    skin,
-    stone,
-    wood,
-)
-
-
-@dataclass
-class AnimalType:
-    """Represents a type of animal that can be hunted in the forest."""
-
-    name: str
-    danger_level: float  # 0.0 to 1.0
-    food_yield: Food
-    material_yield: Optional[Tuple[RawMaterial, int]] = None
-    min_skill_required: int = 1
-    escape_chance: float = 0.3
-    icon: str = "🐾"  # Default icon for animal types
-
+from enigma_engines.village_simulation.environment.weather_system import WeatherSystem, TimeOfDay, Season, WeatherCondition
 
 class Forest(BaseModel):
     """
-    Represents a forest in the village simulation.
-
-    Forests can be used for gathering resources such as wood, stone, and various raw materials.
-    Villagers can also hunt animals in the forest for food and materials.
-
-    Forest natural resources will regenerate over time, allowing villagers to sustainably gather resources.
-
-    Attributes:
-        name (str): The name of the forest.
-        size (int): The size of the forest, indicating how many resources it can support.
-        resources (Dict[RawMaterial, int]): A dictionary mapping raw materials to their quantities.
-        animals (Dict[str, int]): A dictionary mapping animal names to their populations.
-        villagers_present (List[Villager]): List of villagers currently in the forest.
-        icon (str): Icon representing the forest.
-        days_since_last_replenishment (int): Counter for natural replenishment cycle.
+    Represents a forest in the village environment, with dynamic updates
+    influenced by a WeatherSystem.
     """
-
     name: str
-    size: int
-    resources: Dict[RawMaterial, int] = Field(default_factory=dict)
-    animals: Dict[str, int] = Field(default_factory=dict)
-    villagers_present: List[Villager] = Field(default_factory=list)
+    size: float  # square kilometers
+    weather_system: WeatherSystem # Should be WeatherSystem, using Any for flexibility if not strictly typed
     icon: str = "🌲"
-    days_since_last_replenishment: int = 0
 
-    # Configuration constants
-    MIN_RESOURCE_PERCENTAGE: float = 0.2  # Keep at least 20% of max capacity
-    MIN_ANIMAL_PERCENTAGE: float = 0.3  # Keep at least 30% of max animal population
-    RESOURCE_REPLENISH_RATE: float = 0.05  # 5% daily growth rate
-    ANIMAL_REPLENISH_RATE: float = 0.03  # 3% daily growth rate
-    REPLENISH_CYCLE_DAYS: int = 7  # Full replenishment check every week
+    # Tree composition and density
+    tree_types: Dict[str, float] = Field(default_factory=lambda: {
+        "oak": 0.3, "pine": 0.25, "birch": 0.2, "maple": 0.15, "spruce": 0.1
+    }) # Represents proportion of species
+    
+    # Tree populations by age category
+    mature_trees: int = Field(default=1000) # Initial values, will be scaled by size
+    young_trees: int = Field(default=500)
+    saplings: int = Field(default=800)
+    
+    # Calculated dynamically
+    tree_density: float = Field(default=0.0) # Overall tree density (0-1 scale)
+    
+    # Forest health and environmental state
+    health: float = Field(default=0.8, ge=0.0, le=1.0) # Overall forest health
+    moisture: float = Field(default=0.6, ge=0.0, le=1.0) # Soil and ground moisture
+    soil_fertility: float = Field(default=0.7, ge=0.0, le=1.0)
+    undergrowth_density: float = Field(default=0.5, ge=0.0, le=1.0) # Important for some wildlife & fire
+    
+    # Wildlife - now species-specific populations
+    initial_wildlife_species: List[str] = Field(default_factory=lambda: [
+        "deer", "rabbit", "fox", "bird", "squirrel", "boar"
+    ])
+    wildlife_populations: Dict[str, int] = Field(default_factory=dict)
 
-    # Skill requirements
-    MIN_GATHERING_SKILL: int = 0
-    MIN_HUNTING_SKILL: int = 2
-
-    # Risk factors
-    GATHERING_ACCIDENT_CHANCE: float = 0.02
-    WEATHER_PENALTY_CHANCE: float = 0.15
+    # Environmental risks
+    fire_risk: float = Field(default=0.1, ge=0.0, le=1.0)
+    disease_level: float = Field(default=0.05, ge=0.0, le=1.0) # General disease pressure
+    pest_infestation: float = Field(default=0.1, ge=0.0, le=1.0) # General pest pressure
+    
+    # Usage tracking (reset daily)
+    daily_trees_cut_count: int = 0 # Renamed for clarity
+    
+    # Configuration constants (can be tuned)
+    MAX_TREES_PER_SQ_KM: int = 1500 # Max potential trees (all ages) for density calculation
+    SAPLING_SPAWN_RATE_PER_MATURE_TREE: float = 0.02 # Base rate
+    SAPLING_TO_YOUNG_MATURATION_RATE: float = 0.10
+    YOUNG_TO_MATURE_MATURATION_RATE: float = 0.05
+    BASE_TREE_MORTALITY_RATE: float = 0.005 # For mature trees due to age/natural causes
+    WILDLIFE_CARRYING_CAPACITY_PER_SQ_KM: int = 200 # Base for total wildlife units
+    WILDLIFE_BASE_REPRODUCTION_RATE: float = 0.15
+    WILDLIFE_BASE_MORTALITY_RATE: float = 0.10
 
     class Config:
-        arbitrary_types_allowed = True
+        arbitrary_types_allowed = True # To allow WeatherSystem type
 
-    def _get_animal_types(self) -> Dict[str, AnimalType]:
-        """Define available animal types with their properties."""
-        return {
-            "rabbit": AnimalType(
-                name="rabbit",
-                danger_level=0.1,
-                food_yield=roast_meat,
-                material_yield=(skin, 1),
-                min_skill_required=1,
-                escape_chance=0.4,
-                icon="🐇",
-            ),
-            "deer": AnimalType(
-                name="deer",
-                danger_level=0.3,
-                food_yield=roast_meat,
-                material_yield=(skin, 2),
-                min_skill_required=3,
-                escape_chance=0.5,
-                icon="🦌",
-            ),
-            "wild_boar": AnimalType(
-                name="wild_boar",
-                danger_level=0.6,
-                food_yield=roast_meat,
-                material_yield=(skin, 3),
-                min_skill_required=5,
-                escape_chance=0.3,
-                icon="🐗",
-            ),
-            "tiger": AnimalType(
-                name="tiger",
-                danger_level=0.9,
-                food_yield=roast_meat,
-                material_yield=(skin, 4),
-                min_skill_required=8,
-                escape_chance=0.2,
-                icon="🐅",
-            ),
-            "fox": AnimalType(
-                name="fox",
-                danger_level=0.2,
-                food_yield=roast_meat,
-                material_yield=(skin, 1),
-                min_skill_required=2,
-                escape_chance=0.6,
-                icon="🦊",
-            ),
-        }
+    def model_post_init(self, __context: Any) -> None:
+        """Initialize dynamic properties after Pydantic model creation."""
+        # Scale initial tree counts by forest size for better starting point
+        size_factor = self.size / 1.0 # Assuming defaults are for 1 sq km
+        self.mature_trees = int(self.mature_trees * size_factor)
+        self.young_trees = int(self.young_trees * size_factor)
+        self.saplings = int(self.saplings * size_factor)
+        
+        # Initialize wildlife populations
+        if not self.wildlife_populations:
+            base_pop_per_species = int((self.WILDLIFE_CARRYING_CAPACITY_PER_SQ_KM * self.size) / len(self.initial_wildlife_species) * 0.5)
+            for species in self.initial_wildlife_species:
+                self.wildlife_populations[species] = max(5, int(base_pop_per_species * random.uniform(0.7,1.3))) # Ensure some starting pop
+        
+        self._update_tree_density()
+        self.update_daily() # Perform an initial update to set all values based on initial weather
 
-    def _calculate_max_resources(self) -> Dict[RawMaterial, int]:
-        """Calculate maximum resource capacity based on forest size."""
-        return {
-            wood: self.size * 50,
-            stone: self.size * 30,
-            fabric: self.size * 10,  # From plants like cotton
-        }
+    def _get_current_weather_data(self) -> Tuple[Season, WeatherCondition, float, float]:
+        """Helper to get data from WeatherSystem, with fallbacks."""
+        if hasattr(self.weather_system, 'current_season'):
+            season = self.weather_system.current_season
+            condition = self.weather_system.current_weather_condition
+            temp = self.weather_system.get_current_temperature_estimate()
+            precip = self.weather_system.get_current_precipitation_intensity()
+        else: # Fallback if weather_system is a placeholder or not fully equipped
+            season = Season.SPRING
+            condition = WeatherCondition.CLOUDY
+            temp = 15.0
+            precip = 0.0
+        return season, condition, temp, precip
 
-    def _calculate_max_animals(self) -> Dict[str, int]:
-        """Calculate maximum animal population based on forest size."""
-        return {
-            "rabbit": self.size * 20,
-            "deer": self.size * 10,
-            "wild_boar": self.size * 5,
-            "tiger": self.size * 1,
-            "fox": self.size * 4,
-        }
+    def update_daily(self) -> None:
+        """Update all forest conditions for a new day, driven by WeatherSystem."""
+        season, condition, temperature, precipitation = self._get_current_weather_data()
 
-    def gather_resources(
-        self, villager: Villager, resource: RawMaterial, quantity: int
-    ) -> bool:
-        """
-        Allows a villager to gather resources from the forest.
+        self._update_moisture_and_environmental_risks(precipitation, temperature, condition)
+        self._update_tree_growth_and_mortality(season, temperature, condition)
+        self._update_wildlife_dynamics(season, temperature, condition)
+        self.update_disease_and_pests(season, temperature)
+        
+        self.health = self._calculate_forest_health()
+        self._update_tree_density()
+        self._update_undergrowth_density(season)
 
-        Args:
-            villager: The villager attempting to gather resources
-            resource: The type of resource to gather
-            quantity: The amount to gather
+        # Reset daily counters
+        self.daily_trees_cut_count = 0
+        # self.daily_animals_hunted = 0 # Hunting is external
 
-        Returns:
-            bool: True if gathering was successful, False otherwise
+    def _update_moisture_and_environmental_risks(self, precipitation: float, temperature: float, condition: WeatherCondition) -> None:
+        """Update soil moisture, fire risk."""
+        # Moisture update
+        self.moisture += precipitation * 0.1 # Precipitation effect (scaled)
+        evaporation_rate = 0.01 + (max(0, temperature - 10) / 500) # Higher temp, more evaporation
+        evaporation_rate *= (1.0 - self.tree_density * 0.5) # Trees provide shade, reduce evaporation
+        self.moisture -= evaporation_rate
+        self.moisture = max(0.0, min(1.0, self.moisture))
 
-        Notes:
-            Gathering resources can be affected by weather conditions and villager skills.
-            Accidents may occur, leading to potential injuries.
-            Villagers should be cautious and aware of their surroundings while gathering.
-        """
-        # Check if villager is present in the forest
-        if villager not in self.villagers_present:
-            print(f"{villager.name} must be in the {self.name} to gather resources.")
-            return False
+        # Fire Risk update
+        dryness_factor = 1.0 - self.moisture
+        temp_factor = max(0, temperature - 15) / 20 # Risk increases above 15°C
+        undergrowth_factor = self.undergrowth_density * 0.5
+        
+        self.fire_risk = dryness_factor * 0.5 + temp_factor * 0.3 + undergrowth_factor * 0.2
+        if condition == WeatherCondition.STORM: # Storms can initially douse, but lightning is a risk
+            self.fire_risk *= 0.5 
+            if random.random() < 0.05 : self.fire_risk += 0.3 # Lightning strike chance
+        elif condition in [WeatherCondition.LIGHT_RAIN, WeatherCondition.HEAVY_RAIN, WeatherCondition.SNOWY]:
+            self.fire_risk *= 0.2 # Rain/snow reduces risk significantly
+        
+        self.fire_risk = max(0.0, min(1.0, self.fire_risk + random.uniform(-0.05, 0.05)))
 
-        # Check villager health
-        if villager.health < 20:
-            print(
-                f"{villager.name} is too weak to gather resources (health: {villager.health})."
-            )
-            return False
 
-        # Check gathering skill
-        gathering_skill = villager.skills.get("gathering", 0)
-        if gathering_skill < self.MIN_GATHERING_SKILL:
-            print(f"{villager.name} lacks the gathering skill to collect resources.")
-            return False
+    def _update_tree_growth_and_mortality(self, season: Season, temperature: float, condition: WeatherCondition) -> None:
+        """Update tree populations: growth, maturation, mortality."""
+        
+        # Growth season modifier
+        growth_season_mod = 0.0
+        if season == Season.SPRING: growth_season_mod = 1.0
+        elif season == Season.SUMMER: growth_season_mod = 0.8
+        elif season == Season.AUTUMN: growth_season_mod = 0.2 # Slowing down
+        # Winter: growth_season_mod = 0.0 (dormant)
 
-        # Check resource availability
-        available = self.resources.get(resource, 0)
-        max_resources = self._calculate_max_resources()
-        min_required = int(
-            max_resources.get(resource, 0) * self.MIN_RESOURCE_PERCENTAGE
+        # Temperature modifier for growth (optimal range e.g., 10-25°C)
+        temp_mod = 0.0
+        if 10 <= temperature <= 25: temp_mod = 1.0
+        elif 5 <= temperature < 10 or 25 < temperature <= 30: temp_mod = 0.5
+        # else: temp_mod = 0.0 (too cold or too hot)
+
+        # Overall growth conditions modifier
+        conditions_mod = (
+            growth_season_mod * temp_mod * self.health * self.moisture * self.soil_fertility *
+            (1.0 - self.tree_density * 0.3) * # Overcrowding penalty
+            (1.0 - self.disease_level * 0.5) *
+            (1.0 - self.pest_infestation * 0.5)
         )
+        conditions_mod = max(0, conditions_mod)
 
-        if available <= min_required:
-            print(
-                f"The {self.name} needs to preserve its {resource.name} for regeneration."
-            )
-            return False
+        # 1. New Saplings (from mature trees' seeds)
+        new_saplings_count = int(self.mature_trees * self.SAPLING_SPAWN_RATE_PER_MATURE_TREE * conditions_mod * random.uniform(0.8, 1.2))
+        self.saplings += new_saplings_count
 
-        # Calculate actual gathering amount based on skill and randomness
-        skill_modifier = 1 + (gathering_skill * 0.1)
-        weather_modifier = 0.7 if random.random() < self.WEATHER_PENALTY_CHANCE else 1.0
+        # 2. Saplings maturing to Young Trees
+        saplings_maturing = int(self.saplings * self.SAPLING_TO_YOUNG_MATURATION_RATE * conditions_mod * random.uniform(0.7, 1.3))
+        saplings_maturing = min(saplings_maturing, self.saplings) # Cannot mature more than available
+        self.saplings -= saplings_maturing
+        self.young_trees += saplings_maturing
 
-        if weather_modifier < 1.0:
-            print(
-                f"Poor weather conditions affect {villager.name}'s gathering efficiency."
-            )
+        # 3. Young Trees maturing to Mature Trees
+        young_maturing = int(self.young_trees * self.YOUNG_TO_MATURE_MATURATION_RATE * conditions_mod * random.uniform(0.7, 1.3))
+        young_maturing = min(young_maturing, self.young_trees)
+        self.young_trees -= young_maturing
+        self.mature_trees += young_maturing
 
-        max_gatherable = min(
-            quantity,
-            available - min_required,
-            int(10 * skill_modifier),  # Max gathering per attempt based on skill
-        )
+        # 4. Tree Mortality
+        # Base mortality + stress factors
+        mature_mortality_rate = self.BASE_TREE_MORTALITY_RATE + (1.0 - self.health) * 0.01 + self.disease_level * 0.02 + self.pest_infestation * 0.02
+        young_mortality_rate = mature_mortality_rate * 1.5 # Younger trees slightly more vulnerable
+        sapling_mortality_rate = mature_mortality_rate * 2.0 # Saplings most vulnerable
 
-        actual_gathered = int(
-            max_gatherable * weather_modifier * random.uniform(0.7, 1.0)
-        )
+        # Extreme weather impact on mortality (simplified)
+        if condition == WeatherCondition.BLIZZARD or (season == Season.SUMMER and self.moisture < 0.1 and temperature > 30): # Drought/heatwave
+            mature_mortality_rate *= 1.5
+            young_mortality_rate *= 2.0
+            sapling_mortality_rate *= 2.5
+        if condition == WeatherCondition.STORM and random.random() < 0.1: # Chance of some trees falling
+             mature_mortality_rate *= 1.2
+             young_mortality_rate *= 1.5
 
-        if actual_gathered <= 0:
-            print(f"{villager.name} couldn't gather any {resource.name} this time.")
-            return False
+        self.mature_trees -= min(self.mature_trees, int(self.mature_trees * mature_mortality_rate * random.uniform(0.8, 1.2)))
+        self.young_trees -= min(self.young_trees, int(self.young_trees * young_mortality_rate * random.uniform(0.8, 1.2)))
+        self.saplings -= min(self.saplings, int(self.saplings * sapling_mortality_rate * random.uniform(0.8, 1.2)))
 
-        # Apply gathering effects
-        self.resources[resource] -= actual_gathered
+        self.mature_trees = max(0, self.mature_trees)
+        self.young_trees = max(0, self.young_trees)
+        self.saplings = max(0, self.saplings)
+        
+        # Soil fertility impact from tree lifecycle
+        self.soil_fertility -= 0.0001 # Slow degradation from nutrient use
+        self.soil_fertility += (mature_mortality_rate * self.mature_trees * 0.00001) # Decomposition adds back
+        self.soil_fertility = max(0.1, min(1.0, self.soil_fertility))
 
-        # Add to villager inventory
-        if resource in villager.inventory:
-            villager.inventory[resource] += actual_gathered
+
+    def _update_tree_density(self) -> None:
+        """Recalculate tree density."""
+        # Weighted sum: mature trees count fully, young 0.5, saplings 0.1 for density
+        effective_total_trees = self.mature_trees + self.young_trees * 0.5 + self.saplings * 0.1
+        max_possible_trees = self.size * self.MAX_TREES_PER_SQ_KM
+        if max_possible_trees > 0:
+            self.tree_density = min(1.0, effective_total_trees / max_possible_trees)
         else:
-            villager.inventory[resource] = actual_gathered
+            self.tree_density = 0.0
+            
+    def _update_undergrowth_density(self, season: Season) -> None:
+        """Update undergrowth based on season, moisture, and tree density (light)."""
+        growth_mod = 0.0
+        if season == Season.SPRING: growth_mod = 0.1
+        elif season == Season.SUMMER: growth_mod = 0.05
+        elif season == Season.AUTUMN: growth_mod = -0.05
+        elif season == Season.WINTER: growth_mod = -0.1
+        
+        light_factor = 1.0 - self.tree_density * 0.7 # More trees = less light for undergrowth
+        
+        self.undergrowth_density += (growth_mod * self.moisture * light_factor * self.soil_fertility * random.uniform(0.5, 1.5))
+        self.undergrowth_density = max(0.05, min(1.0, self.undergrowth_density))
 
-        # Health and fatigue effects
-        health_cost = 3 + int(actual_gathered * 0.5)
 
-        # Check for accidents
-        if random.random() < self.GATHERING_ACCIDENT_CHANCE:
-            health_cost += 10
-            print(f"{villager.name} had a minor accident while gathering!")
+    def _update_wildlife_dynamics(self, season: Season, temperature: float, condition: WeatherCondition) -> None:
+        """Update wildlife populations for each species."""
+        # Overall carrying capacity based on forest size, health, and undergrowth (food)
+        base_carrying_capacity = self.size * self.WILDLIFE_CARRYING_CAPACITY_PER_SQ_KM
+        environmental_capacity_mod = self.health * self.undergrowth_density * (1.0 - self.pest_infestation * 0.3)
+        
+        # Seasonal impact on carrying capacity (e.g., less food in winter)
+        seasonal_capacity_mod = 1.0
+        if season == Season.WINTER: seasonal_capacity_mod = 0.4
+        elif season == Season.AUTUMN: seasonal_capacity_mod = 0.8
+        elif season == Season.SPRING: seasonal_capacity_mod = 1.2 # Abundance
 
-        villager.health = max(0, villager.health - health_cost)
+        total_carrying_capacity = int(base_carrying_capacity * environmental_capacity_mod * seasonal_capacity_mod)
 
-        # Improve gathering skill
-        skill_improvement = min(0.1 * (actual_gathered / 10), 0.5)
-        if "gathering" in villager.skills:
-            villager.skills["gathering"] += skill_improvement
+        for species_name in list(self.wildlife_populations.keys()):
+            current_pop = self.wildlife_populations[species_name]
+            if current_pop == 0: continue
+
+            # Species-specific carrying capacity (proportional for now)
+            species_carrying_capacity = int(total_carrying_capacity / len(self.wildlife_populations) if self.wildlife_populations else 0)
+            species_carrying_capacity = max(1, species_carrying_capacity) # Min capacity if species exists
+
+            # Reproduction rate modifiers
+            reproduction_mod = 1.0
+            if season == Season.SPRING: reproduction_mod = 1.5 # Breeding season
+            elif season == Season.WINTER: reproduction_mod = 0.2 # Low reproduction in winter
+
+            # Mortality rate modifiers
+            mortality_mod = 1.0
+            if season == Season.WINTER: mortality_mod = 1.8 # Harsher conditions
+            if condition == WeatherCondition.BLIZZARD: mortality_mod *= 2.5
+            elif condition == WeatherCondition.STORM: mortality_mod *= 1.5
+            if self.moisture < 0.1 and temperature > 30 : mortality_mod *= 1.5 # Drought
+            
+            # Logistic growth: growth_rate * current_pop * (1 - current_pop / capacity)
+            births = 0
+            if current_pop < species_carrying_capacity:
+                 births = int(current_pop * self.WILDLIFE_BASE_REPRODUCTION_RATE * reproduction_mod * (1.0 - current_pop / (species_carrying_capacity + 1)))
+                 births = max(0, births)
+            
+            deaths = int(current_pop * self.WILDLIFE_BASE_MORTALITY_RATE * mortality_mod)
+            deaths = max(0, min(current_pop, deaths)) # Cannot have negative population or more deaths than population
+
+            self.wildlife_populations[species_name] = max(0, current_pop + births - deaths)
+
+
+    def _update_disease_and_pests(self, season: Season, temperature: float) -> None:
+        """Update disease and pest levels."""
+        # Disease
+        disease_spread_factor = self.tree_density * 0.01 * (1.0 - self.health * 0.5)
+        if temperature > 5 and temperature < 28: # Favorable temps for many diseases
+            self.disease_level += disease_spread_factor * random.uniform(0.5, 1.5)
+        else: # Unfavorable temps might slow spread
+            self.disease_level += disease_spread_factor * 0.2 * random.uniform(0.5, 1.5)
+        
+        natural_recovery_disease = 0.01 * self.health # Healthier forests recover faster
+        self.disease_level -= natural_recovery_disease
+        self.disease_level = max(0.0, min(1.0, self.disease_level))
+
+        # Pests
+        pest_activity_mod = 0.0
+        if season == Season.SPRING or season == Season.SUMMER: pest_activity_mod = 1.0
+        elif season == Season.AUTUMN: pest_activity_mod = 0.5
+        # Winter: pest_activity_mod = 0.1 (many dormant)
+
+        pest_spread_factor = (1.0 - self.health) * 0.02 * pest_activity_mod
+        self.pest_infestation += pest_spread_factor * random.uniform(0.5, 1.5)
+        
+        # Natural pest control (e.g. birds, other insects) - simplified
+        # More diverse wildlife (higher total pop for now) could mean better pest control
+        total_wildlife = sum(self.wildlife_populations.values())
+        max_possible_wildlife = self.size * self.WILDLIFE_CARRYING_CAPACITY_PER_SQ_KM
+        wildlife_diversity_factor = (total_wildlife / (max_possible_wildlife +1) ) * 0.1
+
+        natural_pest_reduction = 0.005 + wildlife_diversity_factor * 0.01
+        self.pest_infestation -= natural_pest_reduction
+        self.pest_infestation = max(0.0, min(1.0, self.pest_infestation))
+
+
+    def _calculate_forest_health(self) -> float:
+        """Calculate overall forest health based on multiple factors."""
+        # Weighted average of positive and negative factors
+        # Positive factors: moisture, soil fertility, healthy tree distribution, wildlife presence
+        # Negative factors: disease, pests, extreme density (over or under), fire risk
+        
+        # Tree age distribution health (ideal is a mix, not too many old/dying, enough young for future)
+        total_trees = self.mature_trees + self.young_trees + self.saplings
+        if total_trees == 0: tree_dist_health = 0.1
         else:
-            villager.skills["gathering"] = skill_improvement
+            mature_ratio = self.mature_trees / total_trees
+            young_ratio = self.young_trees / total_trees
+            sapling_ratio = self.saplings / total_trees
+            # Ideal might be ~0.4 mature, ~0.3 young, ~0.3 saplings. Penalize large deviations.
+            tree_dist_health = 1.0 - (abs(mature_ratio - 0.4) + abs(young_ratio - 0.3) + abs(sapling_ratio - 0.3)) * 0.5
+            tree_dist_health = max(0.1, tree_dist_health)
 
-        # Update happiness based on success
-        villager.happiness = min(100, villager.happiness + 2)
+        moisture_factor = self.moisture * 1.5 # Moisture is very important
+        fertility_factor = self.soil_fertility
+        density_factor = (1.0 - abs(self.tree_density - 0.6)) # Ideal density around 0.6-0.7
+        
+        disease_impact = (1.0 - self.disease_level)
+        pest_impact = (1.0 - self.pest_infestation)
+        fire_safety = (1.0 - self.fire_risk * 0.5) # Fire risk has some impact on general stress
 
-        print(
-            f"{villager.name} successfully gathered {actual_gathered} {resource.name}."
+        # Wildlife as an indicator of ecosystem health
+        total_wildlife_pop = sum(self.wildlife_populations.values())
+        max_potential_wildlife = self.size * self.WILDLIFE_CARRYING_CAPACITY_PER_SQ_KM
+        wildlife_health_indicator = (total_wildlife_pop / (max_potential_wildlife + 1)) * 0.5 + 0.5 # Scale 0.5 to 1.0
+        wildlife_health_indicator = min(1.0, wildlife_health_indicator)
+
+
+        # Combine factors (weights can be tuned)
+        calculated_health = (
+            tree_dist_health * 0.25 +
+            moisture_factor * 0.20 +
+            fertility_factor * 0.10 +
+            density_factor * 0.10 +
+            disease_impact * 0.10 +
+            pest_impact * 0.10 +
+            fire_safety * 0.05 +
+            wildlife_health_indicator * 0.10
         )
-        return True
+        return max(0.05, min(1.0, calculated_health)) # Ensure health is between 0.05 and 1.0
+    
 
-    def hunt_animal(self, villager: Villager, animal: str) -> Optional[Food]:
+    def cut_trees(self, amount_to_cut: int) -> Tuple[int, Dict[str, int]]:
         """
-        Allows a villager to hunt animals in the forest.
-
-        Args:
-            villager: The villager attempting to hunt
-            animal: The type of animal to hunt
-
-        Returns:
-            Optional[Food]: The food obtained from hunting, or None if unsuccessful
-
-        Notes:
-            Hunting requires the villager to have sufficient health and skills.
-            The success of hunting is affected by weather conditions and animal escape chances.
-            Villagers should be cautious of the dangers associated with hunting.
+        Cut trees from the forest, prioritizing mature, then young.
+        Returns the actual number of trees cut and an estimated breakdown by type.
         """
-        # Check if villager is present in the forest
-        if villager not in self.villagers_present:
-            print(f"{villager.name} must be in the {self.name} to hunt.")
-            return None
+        if amount_to_cut <= 0:
+            return 0, {}
 
-        # Check villager health
-        if villager.health < 30:
-            print(f"{villager.name} is too weak to hunt (health: {villager.health}).")
-            return None
+        actually_cut = 0
+        
+        # Cut from mature trees first
+        cut_from_mature = min(amount_to_cut, self.mature_trees)
+        self.mature_trees -= cut_from_mature
+        actually_cut += cut_from_mature
+        
+        # If more needed, cut from young trees
+        if actually_cut < amount_to_cut:
+            needed_from_young = amount_to_cut - actually_cut
+            cut_from_young = min(needed_from_young, self.young_trees)
+            self.young_trees -= cut_from_young
+            actually_cut += cut_from_young
+            
+        self.daily_trees_cut_count += actually_cut
+        self._update_tree_density() # Density changes after cutting
+        
+        # Estimate types of wood obtained based on current proportions
+        # This is an estimation as we don't track types for each age category separately
+        wood_yield_by_type: Dict[str, int] = {}
+        if actually_cut > 0:
+            for tree_type, proportion in self.tree_types.items():
+                wood_yield_by_type[tree_type] = int(math.ceil(actually_cut * proportion)) # Ceil to ensure total adds up if proportions are exact
 
-        # Check hunting skill
-        hunting_skill = villager.skills.get("hunting", 0)
-        if hunting_skill < self.MIN_HUNTING_SKILL:
-            print(
-                f"{villager.name} lacks the hunting skill (requires level {self.MIN_HUNTING_SKILL})."
-            )
-            return None
+        # Cutting trees can slightly reduce soil fertility and health locally (simplified)
+        self.soil_fertility = max(0.1, self.soil_fertility - 0.001 * actually_cut / (self.size * 100 +1))
+        self.health = max(0.1, self.health - 0.0005 * actually_cut / (self.size * 100 + 1))
 
-        # Check animal availability
-        animal_types = self._get_animal_types()
-        if animal not in animal_types:
-            print(f"Unknown animal type: {animal}")
-            return None
+        return actually_cut, wood_yield_by_type
 
-        animal_type = animal_types[animal]
-        available = self.animals.get(animal, 0)
-        max_animals = self._calculate_max_animals()
-        min_required = int(max_animals.get(animal, 0) * self.MIN_ANIMAL_PERCENTAGE)
+    def get_huntable_wildlife(self) -> Dict[str, int]:
+        """Returns a dictionary of wildlife species and their current populations available for hunting."""
+        # Could add logic here for minimum populations before a species is "huntable"
+        # or if some species are protected/harder to find.
+        # For now, just returns current populations.
+        return self.wildlife_populations.copy()
 
-        if available <= min_required:
-            print(
-                f"The {self.name} needs to preserve its {animal} population for regeneration."
-            )
-            return None
+    def record_animal_hunted(self, species_name: str, count: int = 1) -> bool:
+        """
+        Records that an animal of a specific species was hunted.
+        This should be called by an external system (e.g., Villager action).
+        Returns True if successful (species existed and count was positive), False otherwise.
+        """
+        if species_name in self.wildlife_populations and self.wildlife_populations[species_name] >= count and count > 0:
+            self.wildlife_populations[species_name] -= count
+            # self.daily_animals_hunted += count # If tracking total hunted daily
+            return True
+        return False
 
-        # Check skill requirement for specific animal
-        if hunting_skill < animal_type.min_skill_required:
-            print(
-                f"{villager.name} needs hunting skill {animal_type.min_skill_required} to hunt {animal}."
-            )
-            return None
+    def get_forest_overview(self) -> str:
+        """Provides a string summary of the current forest state."""
+        overview = (
+            f"Forest: {self.name} ({self.size} sq km)\n"
+            f"  Health: {self.health:.2f}, Moisture: {self.moisture:.2f}, Soil Fertility: {self.soil_fertility:.2f}\n"
+            f"  Tree Density: {self.tree_density:.2f}, Undergrowth: {self.undergrowth_density:.2f}\n"
+            f"  Trees: Mature={self.mature_trees}, Young={self.young_trees}, Saplings={self.saplings}\n"
+            f"  Wildlife (sample): Deer={self.wildlife_populations.get('deer',0)}, Rabbit={self.wildlife_populations.get('rabbit',0)}\n"
+            f"  Risks: Fire={self.fire_risk:.2f}, Disease={self.disease_level:.2f}, Pests={self.pest_infestation:.2f}"
+        )
+        return overview
 
-        # Calculate hunting success
-        skill_modifier = hunting_skill / 10
-        base_success_chance = 0.3 + skill_modifier - animal_type.escape_chance
+# --- Example Usage (Illustrative) ---
+if __name__ == "__main__":
+    # In a real scenario, import the actual WeatherSystem
+    # from weather_system import WeatherSystem, Season, WeatherCondition 
+    
+    # For this example, we use the placeholder if the actual class isn't in the same file
+    world_weather = WeatherSystem() 
+    # If WeatherSystem is defined in this file or imported, use:
+    # world_weather = WeatherSystem()
 
-        # Weather affects hunting
-        if random.random() < self.WEATHER_PENALTY_CHANCE:
-            base_success_chance *= 0.7
-            print(
-                f"Poor weather conditions make hunting more difficult for {villager.name}."
-            )
 
-        # Attempt the hunt
-        if random.random() > base_success_chance:
-            print(f"{villager.name} failed to catch the {animal} - it escaped!")
-            villager.health = max(0, villager.health - 5)
-            villager.happiness = max(0, villager.happiness - 3)
-            return None
+    # Create a forest instance
+    my_forest = Forest(
+        name="Whispering Woods",
+        size=5.0, # 5 square kilometers
+        weather_system=world_weather,
+        mature_trees=2000, # Initial counts before scaling by size in post_init
+        young_trees=1000,
+        saplings=1500
+    )
 
-        # Successful hunt
-        self.animals[animal] -= 1
+    print("--- Initial Forest State ---")
+    print(my_forest.get_forest_overview())
+    if hasattr(world_weather, 'get_weather_overview'):
+         print(world_weather.get_weather_overview())
+    else: # Placeholder weather system
+        print(f"Weather: Season: {world_weather.current_season.value}, Condition: {world_weather.current_weather_condition.value}")
 
-        # Get food yield
-        food_obtained = animal_type.food_yield
 
-        # Add food to villager inventory
-        if food_obtained in villager.inventory:
-            villager.inventory[food_obtained] += 1
-        else:
-            villager.inventory[food_obtained] = 1
+    # Simulate a few days
+    for day in range(1, 6):
+        print(f"\n--- Day {day} ---")
+        # Advance weather (if using the full WeatherSystem class)
+        if hasattr(world_weather, 'advance_day'):
+            world_weather.advance_day()
+            if hasattr(world_weather, 'get_weather_overview'):
+                 print(world_weather.get_weather_overview())
 
-        # Get material yield
-        if animal_type.material_yield:
-            material, quantity = animal_type.material_yield
-            if material in villager.inventory:
-                villager.inventory[material] += quantity
+        my_forest.update_daily() # Forest updates based on (new) weather
+        print(my_forest.get_forest_overview())
+
+        if day == 2:
+            print("\nChopping some trees...")
+            cut, types = my_forest.cut_trees(50)
+            print(f"Actually cut {cut} trees. Estimated types: {types}")
+            print(f"Forest state after cutting: Mature={my_forest.mature_trees}, Young={my_forest.young_trees}")
+        
+        if day == 3 and 'deer' in my_forest.wildlife_populations:
+            print("\nHunting a deer...")
+            if my_forest.record_animal_hunted("deer", 1):
+                print("Successfully recorded 1 deer hunted.")
             else:
-                villager.inventory[material] = quantity
-            print(
-                f"{villager.name} also obtained {quantity} {material.name} from the hunt."
-            )
+                print("Failed to record deer hunt (not enough deer?).")
+            print(f"Deer population: {my_forest.wildlife_populations.get('deer', 0)}")
 
-        # Health cost and danger
-        base_health_cost = 10
-        danger_cost = int(animal_type.danger_level * 20)
 
-        # Check for hunting injuries based on danger level
-        if random.random() < animal_type.danger_level:
-            injury = int(animal_type.danger_level * 30)
-            base_health_cost += injury
-            print(f"{villager.name} was injured by the {animal} during the hunt!")
+    print("\n--- Simulating a harsher weather period (e.g., drought in summer) ---")
+    if hasattr(world_weather, 'current_season'): # Check if full WeatherSystem
+        world_weather.current_season = Season.SUMMER
+        world_weather.current_weather_condition = WeatherCondition.CLEAR # Hot and clear
+        # Manually set precipitation low for placeholder, or let WeatherSystem handle it
+        if isinstance(world_weather, WeatherSystem): # if placeholder
+             world_weather.get_current_precipitation_intensity = lambda: 0.001 # Very low precip
+             world_weather.get_current_temperature_estimate = lambda: 30.0 # Hot
 
-        villager.health = max(0, villager.health - (base_health_cost + danger_cost))
-
-        # Improve hunting skill
-        skill_improvement = 0.2 + (animal_type.danger_level * 0.3)
-        if "hunting" in villager.skills:
-            villager.skills["hunting"] += skill_improvement
-        else:
-            villager.skills["hunting"] = skill_improvement
-
-        # Update happiness based on successful hunt
-        villager.happiness = min(100, villager.happiness + 5)
-
-        print(
-            f"{villager.name} successfully hunted a {animal} and obtained {food_obtained.name}!"
-        )
-        return food_obtained
-
-    def replenish_resources(self) -> None:
-        """
-        Naturally replenish forest resources and animal populations over time.
-        This function should be called periodically (e.g., daily) in the simulation.
-        """
-        self.days_since_last_replenishment += 1
-
-        # Get maximum capacities
-        max_resources = self._calculate_max_resources()
-        max_animals = self._calculate_max_animals()
-
-        # Daily passive regeneration
-        for resource, max_amount in max_resources.items():
-            current = self.resources.get(resource, 0)
-            if current < max_amount:
-                # Natural growth with randomness
-                growth_rate = self.RESOURCE_REPLENISH_RATE * random.uniform(0.5, 1.5)
-                growth = int(max_amount * growth_rate)
-
-                # Accelerated growth if below minimum threshold
-                if current < max_amount * self.MIN_RESOURCE_PERCENTAGE:
-                    growth *= 2
-
-                self.resources[resource] = min(current + growth, max_amount)
-
-        # Animal population growth
-        for animal, max_population in max_animals.items():
-            current = self.animals.get(animal, 0)
-            if (
-                current < max_population and current > 0
-            ):  # Need at least 1 for reproduction
-                # Natural reproduction with randomness
-                growth_rate = self.ANIMAL_REPLENISH_RATE * random.uniform(0.3, 1.2)
-
-                # Population growth is proportional to current population
-                growth = int(current * growth_rate)
-                growth = max(1, growth)  # At least 1 if population exists
-
-                # Accelerated growth if below minimum threshold
-                if current < max_population * self.MIN_ANIMAL_PERCENTAGE:
-                    growth *= 2
-
-                self.animals[animal] = min(current + growth, max_population)
-
-        # Reset replenishment counter weekly
-        if self.days_since_last_replenishment >= 7:
-            self.days_since_last_replenishment = 0
+    for i in range(5): # 5 more days
+        day +=1
+        print(f"\n--- Day {day} (Drought Simulation) ---")
+        if hasattr(world_weather, 'advance_day'):
+            world_weather.advance_day() # This would normally change weather too
+            # For controlled test, we might override weather condition each day if needed
+            world_weather.current_weather_condition = WeatherCondition.CLEAR 
+            if hasattr(world_weather, 'get_weather_overview'):
+                 print(world_weather.get_weather_overview())
+        
+        my_forest.update_daily()
+        print(my_forest.get_forest_overview())

@@ -97,3 +97,26 @@ wine = Food(
     making_time=15,  # Time to ferment wine
     icon="🍷",
 )
+
+# Additional food items needed by villager.py
+berries = Food(
+    name="Berries",
+    base_value=0.3,
+    nutritional_value=30,
+    validity=3,
+    description="Fresh wild berries found in the forest.",
+    weight=0.1,
+    making_time=0,
+    icon="🫐",
+)
+
+wild_meat_food = Food(
+    name="Wild Meat",
+    base_value=2.5,
+    nutritional_value=250,
+    validity=3,
+    description="Fresh meat from hunted wild animals.",
+    weight=1.0,
+    making_time=0,
+    icon="🥩",
+)

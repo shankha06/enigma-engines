@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 from enigma_engines.village_simulation.resources.clothing import Clothing
 from enigma_engines.village_simulation.resources.food import Food
@@ -20,6 +20,12 @@ class ActionType(Enum):
     CRAFTING = "crafting"
     RESTING = "resting"
     SOCIALIZING = "socializing"
+    IDLE = "idle"
+    FORAGING = "foraging"
+    HUNTING = "hunting"
+    WOODCUTTING = "woodcutting"
+    SELLING_GOODS = "selling_goods"
+    TANNERY_WORK = "tannery_work"
 
 
 @dataclass
@@ -62,6 +68,10 @@ class ActionPlan:
     impact: ActionImpact = None
     requirements: Dict[str, Union[int, float]] = None
     location: Optional[str] = None
+    description: Optional[str] = None
+    target_location: Optional[Any] = None  # For forest, river, tannery objects
+    target_entity: Optional[str] = None  # For specific animals, fish types
+    duration_hours: Optional[int] = None  # Alternative to duration field
 
     def __post_init__(self):
         """Initialize default values after dataclass initialization."""
@@ -94,6 +104,22 @@ class ActionPlan:
             ActionType.SOCIALIZING: ActionImpact(
                 happiness_change=20, energy_change=-10
             ),
+            ActionType.IDLE: ActionImpact(energy_change=-5),
+            ActionType.FORAGING: ActionImpact(
+                health_change=-5, happiness_change=5, energy_change=-15
+            ),
+            ActionType.HUNTING: ActionImpact(
+                health_change=-10, happiness_change=10, energy_change=-25
+            ),
+            ActionType.WOODCUTTING: ActionImpact(
+                health_change=-5, happiness_change=5, energy_change=-20
+            ),
+            ActionType.SELLING_GOODS: ActionImpact(
+                happiness_change=5, money_change=10.0
+            ),
+            ActionType.TANNERY_WORK: ActionImpact(
+                health_change=-10, happiness_change=5, money_change=15.0, energy_change=-25
+            ),
         }
         return impact_map.get(self.action_type, ActionImpact())
 
@@ -110,6 +136,12 @@ class ActionPlan:
             ActionType.CRAFTING: {"min_energy": 15, "min_skill": 1},
             ActionType.RESTING: {"min_energy": 0},
             ActionType.SOCIALIZING: {"min_energy": 10, "min_happiness": 20},
+            ActionType.IDLE: {},
+            ActionType.FORAGING: {"min_health": 20, "min_energy": 15},
+            ActionType.HUNTING: {"min_health": 40, "min_energy": 25},
+            ActionType.WOODCUTTING: {"min_health": 30, "min_energy": 20},
+            ActionType.SELLING_GOODS: {"min_items": 1},
+            ActionType.TANNERY_WORK: {"min_health": 40, "min_energy": 25},
         }
         return requirements_map.get(self.action_type, {})
 
@@ -254,8 +286,81 @@ def create_interaction_action(target_villager: str, duration: int = 1) -> Action
     )
 
 
-def create_working_action(location: str, duration: int = 8) -> ActionPlan:
+def create_working_action(location: str, duration: int = 8, job_type: str = "general") -> ActionPlan:
     """Create a working action plan."""
     return ActionPlan(
-        action_type=ActionType.WORKING, duration=duration, priority=7, location=location
+        action_type=ActionType.WORKING, 
+        duration=duration, 
+        priority=7, 
+        location=location,
+        description=f"Working at {location} - {job_type}"
+    )
+
+
+def create_foraging_action(forest_location: Any, hours: int = 2) -> ActionPlan:
+    """Create a foraging action plan."""
+    return ActionPlan(
+        action_type=ActionType.FORAGING,
+        target_location=forest_location,
+        duration_hours=hours,
+        priority=6,
+        description=f"Foraging in forest for {hours} hours"
+    )
+
+
+def create_fishing_action(river_location: Any, hours: int = 3, target_fish: str = "any") -> ActionPlan:
+    """Create a fishing action plan."""
+    return ActionPlan(
+        action_type=ActionType.FISHING,
+        target_location=river_location,
+        target_entity=target_fish,
+        duration_hours=hours,
+        priority=7,
+        description=f"Fishing at river for {hours} hours"
+    )
+
+
+def create_hunting_action(forest_location: Any, target_species: str, hours: int = 4) -> ActionPlan:
+    """Create a hunting action plan."""
+    return ActionPlan(
+        action_type=ActionType.HUNTING,
+        target_location=forest_location,
+        target_entity=target_species,
+        duration_hours=hours,
+        priority=6,
+        description=f"Hunting {target_species} for {hours} hours"
+    )
+
+
+def create_woodcutting_action(forest_location: Any, hours: int = 4) -> ActionPlan:
+    """Create a woodcutting action plan."""
+    return ActionPlan(
+        action_type=ActionType.WOODCUTTING,
+        target_location=forest_location,
+        duration_hours=hours,
+        priority=7,
+        description=f"Cutting wood for {hours} hours"
+    )
+
+
+def create_selling_goods_action(item: Union[RawMaterial, Food, Clothing], quantity: int = 1) -> ActionPlan:
+    """Create a selling goods action plan."""
+    return ActionPlan(
+        action_type=ActionType.SELLING_GOODS,
+        target_item=item,
+        quantity=quantity,
+        priority=5,
+        duration=1,
+        description=f"Selling {quantity} {item.name}"
+    )
+
+
+def create_tannery_work_action(tannery_location: Any, hours: int = 4) -> ActionPlan:
+    """Create a tannery work action plan."""
+    return ActionPlan(
+        action_type=ActionType.TANNERY_WORK,
+        target_location=tannery_location,
+        duration_hours=hours,
+        priority=7,
+        description=f"Working at tannery for {hours} hours"
     )
