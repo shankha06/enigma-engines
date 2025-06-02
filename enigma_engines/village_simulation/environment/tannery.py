@@ -17,7 +17,7 @@ from enigma_engines.village_simulation.resources.raw_material import (
     fabric,
     leather,
 )
-from enigma_engines.village_simulation.utilities import backend_logger
+from enigma_engines.village_simulation.utilities.logger import backend_logger
 
 
 @dataclass

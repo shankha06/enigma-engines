@@ -61,6 +61,25 @@ class WeatherSystem(BaseModel):
     current_day_in_season: int = Field(default=1)
     current_season: Season = Field(default=Season.SPRING)
     current_weather_condition: WeatherCondition = Field(default=WeatherCondition.CLOUDY)
+    weather_icons: Dict[WeatherCondition, str] = Field(default_factory=lambda: {
+        WeatherCondition.CLEAR: "☀️",
+        WeatherCondition.CLOUDY: "☁️",
+        WeatherCondition.OVERCAST: "🌥️",
+        WeatherCondition.LIGHT_RAIN: "🌦️",
+        WeatherCondition.HEAVY_RAIN: "🌧️",
+        WeatherCondition.STORM: "⛈️",
+        WeatherCondition.FOGGY: "🌫️",
+        WeatherCondition.SNOWY: "❄️",
+        WeatherCondition.BLIZZARD: "🌨️",
+        WeatherCondition.HAIL: "🌩️"
+    })
+
+    season_icons: Dict[Season, str] = Field(default_factory=lambda: {
+        Season.SPRING: "🌸",
+        Season.SUMMER: "☀️",
+        Season.AUTUMN: "🍂",
+        Season.WINTER: "❄️"
+    })
     
     days_per_season: int = Field(default=30) # Simplified from 90 for faster testing
     total_days_simulated: int = Field(default=0)

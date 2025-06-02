@@ -1,48 +1,23 @@
-from typing import Dict, List, Optional, Tuple, Union, Any
 import random
-from dataclasses import dataclass, field as dataclass_field
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple, Union
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, model_validator
+from pydantic import Field as PydanticField
 
-from enigma_engines.village_simulation.environment.weather_system import WeatherSystem, TimeOfDay, Season, WeatherCondition
-
-@dataclass
-class Item:
-    name: str
-    description: str = ""
-    icon: str = "❓"
-    def __hash__(self): return hash(self.name) # Make hashable for inventory keys
-    def __eq__(self, other): return isinstance(other, Item) and self.name == other.name
-
-@dataclass
-class Food(Item):
-    calories: int = 0
-    spoils_in_days: Optional[int] = None
-
-@dataclass
-class RawMaterial(Item):
-    material_type: str = "generic"
-
-fish = Food(name="Fish", description="A freshly caught fish.", calories=100, icon="🐟")
-wood = RawMaterial(name="Driftwood", description="A piece of wood found by the river.", material_type="wood", icon="🪵")
-stone = RawMaterial(name="River Stone", description="A smooth stone from the riverbed.", material_type="stone", icon="🪨")
-soggy_boot = RawMaterial(name="Soggy Boot", description="An old, waterlogged boot. Clearly trash.", icon="👢")
-lost_locket = Item(name="Lost Locket", description="A tarnished silver locket.", icon="💍")
-iron_ore_chunk = RawMaterial(name="Chunk of Iron Ore", description="A surprisingly heavy rock.", icon="🧱")
-old_coin = Item(name="Old Coin", description="A worn, unidentifiable coin.", icon="🪙")
-
-
-@dataclass
-class Villager:
-    name: str
-    health: float = 100.0
-    skills: Dict[str, float] = dataclass_field(default_factory=dict)
-    inventory: Dict[Item, int] = dataclass_field(default_factory=dict)
-    happiness: int = 50
-    def __hash__(self): return hash(self.name)
-    def __eq__(self, other): return isinstance(other, Villager) and self.name == other.name
-# --- End of Placeholders ---
+from enigma_engines.village_simulation.agents.villager import Villager
+from enigma_engines.village_simulation.environment.weather import Season, TimeOfDay, WeatherCondition, WeatherSystem
+from enigma_engines.village_simulation.resources.food import Food, fish
+from enigma_engines.village_simulation.resources.item import (
+    Item,
+    lost_locket,
+    old_coin,
+    rusty_sword,
+    scraps,
+    soggy_boot,
+)
 
 
 @dataclass
@@ -85,12 +60,12 @@ class River(BaseModel):
     weather_system: Union[Any, WeatherSystem] # Allow 'Any' for flexibility if WeatherSystem is complex or use placeholder
 
     # Dynamic state variables, influenced by WeatherSystem and river's own dynamics
-    current_water_level_multiplier: float = Field(default=1.0)  # Multiplier for base_depth
-    current_water_temperature: float = Field(default=15.0) # Celsius
-    pollution_level: float = Field(default=0.0)
+    current_water_level_multiplier: float = PydanticField(default=1.0)  # Multiplier for base_depth
+    current_water_temperature: float = PydanticField(default=15.0) # Celsius
+    pollution_level: float = PydanticField(default=0.0)
 
-    fish_population: Dict[str, int] = Field(default_factory=dict)
-    villagers_present: List[Villager] = Field(default_factory=list)
+    fish_population: Dict[str, int] = PydanticField(default_factory=dict)
+    villagers_present: Optional[List[Villager]] = PydanticField(default=None)
     icon: str = "🌊"
 
     # River-specific configuration
@@ -100,17 +75,17 @@ class River(BaseModel):
     NATURAL_POLLUTION_DISSIPATION_RATE: float = 0.02
     BASE_CATCH_CHANCE: float = 0.25
     SKILL_BONUS_PER_LEVEL: float = 0.05
-    EQUIPMENT_BONUS: Dict[str, float] = Field(default_factory=lambda: {"fishing rod": 0.15, "net": 0.25, "basic spear": 0.05})
+    EQUIPMENT_BONUS: Dict[str, float] = PydanticField(default_factory=lambda: {"fishing rod": 0.15, "net": 0.25, "basic spear": 0.05})
     
-    max_fish_population_factors: Dict[str, float] = Field(default_factory=lambda: {
+    max_fish_population_factors: Dict[str, float] = PydanticField(default_factory=lambda: {
         "trout": 0.3, "salmon": 0.2, "catfish": 0.25, "minnow": 0.15, "pike": 0.1
     })
     
     # How river depth reacts to precipitation (multiplier on precipitation intensity)
-    water_level_precipitation_sensitivity: float = Field(default=0.05)
+    water_level_precipitation_sensitivity: float = PydanticField(default=0.05)
     # How river temperature reacts to air temperature (0-1, 1 means water temp = air temp quickly)
-    water_temperature_sensitivity_to_air: float = Field(default=0.3)
-    base_water_temperature_offset: float = Field(default=2.0) # River water often cooler than air in summer, warmer in winter near freezing
+    water_temperature_sensitivity_to_air: float = PydanticField(default=0.3)
+    base_water_temperature_offset: float = PydanticField(default=2.0) # River water often cooler than air in summer, warmer in winter near freezing
 
     class Config:
         arbitrary_types_allowed = True
@@ -263,7 +238,7 @@ class River(BaseModel):
 
     def _check_fishing_prerequisites(self, villager: Villager) -> Tuple[bool, str]:
         # (Same as before, no direct weather dependency here)
-        if villager not in self.villagers_present:
+        if self.villagers_present is None:
             return False, f"{villager.name} must be at the {self.name} to fish."
         if villager.health < 20:
             return False, f"{villager.name} is too weak to fish (health: {villager.health})."
@@ -310,9 +285,9 @@ class River(BaseModel):
         special_catch_chance = 0.05 + (self.pollution_level * 0.15) + (villager.skills.get("fishing", 0) * 0.005)
         if random.random() < special_catch_chance:
             if self.pollution_level > 0.6 and random.random() < 0.7: return soggy_boot
-            elif self.pollution_level > 0.3 and random.random() < 0.5: return wood
+            elif self.pollution_level > 0.3 and random.random() < 0.5: return rusty_sword
             elif villager.skills.get("fishing", 0) > 4 and random.random() < 0.3:
-                return random.choice([lost_locket, iron_ore_chunk, stone])
+                return random.choice([lost_locket, scraps])
             elif random.random() < 0.2: return old_coin
         return None
 

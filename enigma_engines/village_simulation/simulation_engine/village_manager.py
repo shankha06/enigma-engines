@@ -1,11 +1,9 @@
-import math
 import random
 from datetime import datetime, timedelta
-from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from pydantic import Field as PydanticField
 
 # Rich library imports (as provided by user)
@@ -13,23 +11,26 @@ from rich.console import Console as RichConsole
 from rich.console import Group
 from rich.padding import Padding
 from rich.panel import Panel
-from rich.style import Style
 from rich.table import Table
 from rich.text import Text
 
 from enigma_engines.village_simulation.agents.villager import Villager
-from enigma_engines.village_simulation.environment.army import Army, UnitType
+from enigma_engines.village_simulation.environment.army import Army
 from enigma_engines.village_simulation.environment.field import Field
 from enigma_engines.village_simulation.environment.forest import Forest
 from enigma_engines.village_simulation.environment.river import River
 from enigma_engines.village_simulation.environment.tannery import Tannery
 from enigma_engines.village_simulation.environment.vendor import Garrick_Ironheart, Lyra, Mira_Greenleaf, Vendor
-from enigma_engines.village_simulation.resources.clothing import daily_clothes
-from enigma_engines.village_simulation.resources.food import Food, apple, berries, bread, fish, roast_meat
+from enigma_engines.village_simulation.resources.food import Food, berries, bread, fish
 from enigma_engines.village_simulation.resources.item import Item
-from enigma_engines.village_simulation.resources.raw_material import RawMaterial, fabric, skin, stone
-from enigma_engines.village_simulation.resources.raw_materials import leather, wood, wool
-from enigma_engines.village_simulation.systems.weather_system import Season, TimeOfDay, WeatherCondition, WeatherSystem
+from enigma_engines.village_simulation.resources.raw_material import (
+    RawMaterial,
+    leather,
+    skin,
+    wood,
+)
+from enigma_engines.village_simulation.environment.weather import WeatherSystem
+from enigma_engines.village_simulation.utilities.id_generator import Gender, generate_medieval_villager_name
 from enigma_engines.village_simulation.utilities.logger import backend_logger
 
 # --- Rich Console Initialization ---
@@ -63,13 +64,27 @@ class VillageManager(BaseModel):
     days_since_last_migration: int = 0
     MIGRATION_CHECK_INTERVAL_DAYS: int = 7 # Check for migration weekly
     MIGRATION_COOLDOWN_DAYS: int = 30 # After an event, wait before another
+    migration_cooldown: int = 0 # Cooldown for migration events
 
     # Stats
     total_population: int = 0
     average_happiness: float = 0.0
     average_health: float = 0.0
 
+    daily_incidents: List[Tuple[str, str]] = PydanticField(default_factory=list) # (icon, message) or (category, message)
+    master_log_for_summary: List[str] = PydanticField(default_factory=list) # Collects messages from villager actions
+
     class Config: arbitrary_types_allowed = True
+
+    def log_incident(self, message: str, category: str = "general"):
+        """Logs a notable event for the daily summary."""
+        icon_map = {
+            "death": "💀", "birth": "👶", "migration_in": "➡️🏘️", "migration_out": "🏘️⬅️",
+            "trade": "⚖️", "discovery": "💡", "disaster": "🔥", "construction": "🏗️",
+            "crime": "🔪", "celebration": "🎉", "illness": "🤢", "recovery": "💪",
+            "activity": "🛠️", "crafting": "🔧", "farming": "🌾", "warning": "⚠️"
+        }
+        self.daily_incidents.append((icon_map.get(category, "ℹ️"), message))
 
     def initialize_village(self, num_villagers: int = 10, forest_size_sqkm: float = 2.0, river_name: str = "Clearwater River"):
         backend_logger.info(f"Initializing village: {self.name} on {self.current_date.strftime('%Y-%m-%d')}")
@@ -84,8 +99,32 @@ class VillageManager(BaseModel):
 
     def _create_environment(self, forest_size_sqkm: float, river_name: str):
         self.forest = Forest(name="The Wild Woods", size=forest_size_sqkm, weather_system=self.weather_system)
-        self.river = River(name=river_name, weather_system=self.weather_system)
-        self.fields.append(Field(name="South Field"))
+        self.river = River(
+            name=river_name,
+            length=forest_size_sqkm * 2,
+            base_flow_rate= random.uniform(0.5, 2.0),  # Random flow rate for variety
+            base_depth= random.uniform(1.0, 5.0),  # Random depth for variety
+            weather_system=self.weather_system,
+            fish_population={
+                "trout": random.randint(10, 80),  # Random initial fish counts
+                "salmon": random.randint(10, 40),
+                "catfish": random.randint(10, 70),
+                "minnow": random.randint(10, 50),
+                "pike": random.randint(10, 20)
+            }
+        )
+        self.fields.append(Field(
+            name="Hilltop Farm",
+            size=forest_size_sqkm * 0.15
+        ))
+        self.fields.append(Field(
+            name="South Meadow",
+            size=forest_size_sqkm * 0.25
+        ))
+        self.fields.append(Field(
+            name="Seaside Pasture",
+            size=forest_size_sqkm * 0.13
+        ))
         backend_logger.info("Environment created (Forest, River, Field).")
 
     def _create_initial_population(self, count: int):
@@ -97,15 +136,19 @@ class VillageManager(BaseModel):
             skills = {occupation.lower(): random.uniform(0.5, 2.0)}
             if occupation == "Hunter": skills["foraging"] = random.uniform(0.2,1.0)
             if occupation == "Tanner": skills["hunting"] = random.uniform(0.2,0.8) # Tanners might need to source hides
-
+            gender = random.choice([Gender.MALE, Gender.FEMALE])
             villager = Villager(
-                name=f"Villager {i+1}-{occupation[0]}", age=age, occupation=occupation, skills=skills,
+                name=generate_medieval_villager_name(gender),
+                gender = gender,
+                age=age,
+                occupation=occupation,
+                skills=skills,
                 money=random.uniform(10, 50), health=random.randint(70,100),
                 happiness=random.randint(60,90), energy=random.randint(80,100),
                 current_forest=self.forest, current_river=self.river, # Pass environment refs
                 current_tannery=self.tannery, weather_system=self.weather_system
             )
-            self.villagers[villager.id] = villager
+            self.villagers[villager.name] = villager
         self.total_population = len(self.villagers)
 
     def _create_vendors_and_buildings(self):
@@ -139,7 +182,7 @@ class VillageManager(BaseModel):
         backend_logger.info(self.weather_system.get_weather_overview())
 
         # 2. Environment Updates (react to weather)
-        if self.forest: self.forest.daily_update()
+        if self.forest: self.forest.update_daily()
         if self.river: self.river.daily_river_update()
         # Fields would also update here (planting, growth, harvest)
 
@@ -148,7 +191,7 @@ class VillageManager(BaseModel):
         villagers_to_remove = []
         for villager_id, villager in list(self.villagers.items()): # list() for safe removal
             if villager.is_alive:
-                villager.daily_update_cycle(world_knowledge)
+                villager.daily_update_cycle(village_manager_ref=self, world_knowledge=world_knowledge)
                 # Collect resources produced by villagers into village storage (optional)
                 # For example, if a woodcutter produces logs, they might go to village storage or their inventory
             if not villager.is_alive:
@@ -261,12 +304,14 @@ class VillageManager(BaseModel):
             occupation = random.choice(occupations)
             skills = {occupation.lower(): random.uniform(0.1, 1.0)} # Migrants might have lower starting skills
             
+            gender = random.choice([Gender.MALE, Gender.FEMALE])
             new_villager = Villager(
-                name=f"Migrant {self.total_population + 1}", age=age, occupation=occupation, skills=skills,
+                name=generate_medieval_villager_name(gender),
+                gender = gender, age=age, occupation=occupation, skills=skills,
                 money=random.uniform(5, 20), health=random.randint(60,90), happiness=random.randint(50,80), energy=random.randint(70,100),
                 current_forest=self.forest, current_river=self.river, current_tannery=self.tannery, weather_system=self.weather_system
             )
-            self.villagers[new_villager.id] = new_villager
+            self.villagers[new_villager.name] = new_villager
         self._update_village_stats() # Recalculate total_population
 
     def _remove_migrants(self, count: int):
@@ -422,7 +467,7 @@ class VillageManager(BaseModel):
         # Most Skilled (example: Woodcutting)
         best_woodcutters = sorted([v for v in self.villagers.values() if v.get_skill("woodcutting") > 0], key=lambda v: v.get_skill("woodcutting"), reverse=True)
         if best_woodcutters:
-            skill_table = Table(title="🌲 Top Woodcutters", title_style="bold green4", show_header=True, header_style="bold_magenta")
+            skill_table = Table(title="🌲 Top Woodcutters", title_style="bold green4", show_header=True, header_style="bold magenta")
             skill_table.add_column("Name", width=20); skill_table.add_column("Skill Level", justify="right")
             for v in best_woodcutters[:3]: skill_table.add_row(v.name, f"{v.get_skill('woodcutting'):.1f}")
             elements.append(skill_table)
@@ -430,7 +475,7 @@ class VillageManager(BaseModel):
         # Daily Earners (simple version)
         daily_earners = sorted([v for v in self.villagers.values() if v.daily_earnings > 0], key=lambda v: v.daily_earnings, reverse=True)
         if daily_earners:
-            earn_table = Table(title="📈 Top Daily Earners", title_style="bold green", show_header=True, header_style="bold_magenta")
+            earn_table = Table(title="📈 Top Daily Earners", title_style="bold green", show_header=True, header_style="bold magenta")
             earn_table.add_column("Name", width=20); earn_table.add_column("Earned 🪙", justify="right")
             for v in daily_earners[:3]: earn_table.add_row(v.name, f"{v.daily_earnings:.2f}")
             elements.append(earn_table)
@@ -471,38 +516,38 @@ class VillageManager(BaseModel):
         all_info_elements.append(Panel(Group(*self._prepare_leaderboard_panel_content()), title="[b magenta]:trophy: Leaderboards[/b magenta]", border_style="magenta"))
 
         # Section 5: Detailed Villager Action Log (Optional, can be very verbose)
-        # if self.master_log_for_summary:
-        #     log_text = Text("\n".join(self.master_log_for_summary[-20:])) # Last 20 actions
-        #     all_info_elements.append(Panel(log_text, title="[b bright_black]Recent Activities[/b bright_black]", border_style="bright_black"))
+        if self.master_log_for_summary:
+            log_text = Text("\n".join(self.master_log_for_summary[-20:])) # Last 20 actions
+            all_info_elements.append(Panel(log_text, title="[b bright_black]Recent Activities[/b bright_black]", border_style="bright_black"))
 
 
         self._print_day_summary_panel_rich(panel_title, all_info_elements)
 
 # --- Main Simulation Example ---
-if __name__ == "__main__":
-    village_sim = VillageManager(name="Oakhaven")
-    village_sim.initialize_village(num_villagers=15, forest_size_sqkm=3.0, river_name="Silverstream")
+# if __name__ == "__main__":
+#     village_sim = VillageManager(name="Oakhaven")
+#     village_sim.initialize_village(num_villagers=15, forest_size_sqkm=3.0, river_name="Silverstream")
 
-    for day_count in range(1, 31): # Simulate 30 days
-        village_sim.simulate_daily_tick()
-        if day_count % 5 == 0: # Log detailed villager status every 5 days
-            backend_logger.info(f"--- Villager Status Check - End of Day {day_count} ---")
-            if not village_sim.villagers: backend_logger.info("No villagers left."); break
-            for v_id, v in village_sim.villagers.items():
-                inv_summary = {item.name: qty for item, qty in v.inventory.items()}
-                backend_logger.info(
-                    f"  {v.name} ({v.occupation}, {v.age}yo): H:{v.health} E:{v.energy} Hap:{v.happiness} M:{v.money:.1f} Skills:{v.skills} Inv:{inv_summary} Alive:{v.is_alive}"
-                )
-        if not village_sim.villagers:
-            backend_logger.error("All villagers have perished or left! Simulation ends.")
-            break
+#     for day_count in range(1, 31): # Simulate 30 days
+#         village_sim.simulate_daily_tick()
+#         if day_count % 5 == 0: # Log detailed villager status every 5 days
+#             backend_logger.info(f"--- Villager Status Check - End of Day {day_count} ---")
+#             if not village_sim.villagers: backend_logger.info("No villagers left."); break
+#             for v_id, v in village_sim.villagers.items():
+#                 inv_summary = {item.name: qty for item, qty in v.inventory.items()}
+#                 backend_logger.info(
+#                     f"  {v.name} ({v.occupation}, {v.age}yo): H:{v.health} E:{v.energy} Hap:{v.happiness} M:{v.money:.1f} Skills:{v.skills} Inv:{inv_summary} Alive:{v.is_alive}"
+#                 )
+#         if not village_sim.villagers:
+#             backend_logger.error("All villagers have perished or left! Simulation ends.")
+#             break
     
-    backend_logger.info("\n===== SIMULATION FINISHED =====")
-    backend_logger.info(f"Final Village State for '{village_sim.name}' on {village_sim.current_date.strftime('%Y-%m-%d')}:")
-    backend_logger.info(f"  Population: {village_sim.total_population}")
-    backend_logger.info(f"  Avg Happiness: {village_sim.average_happiness:.2f}, Avg Health: {village_sim.average_health:.2f}")
-    backend_logger.info(f"  Treasury: {village_sim.treasury:.2f}")
-    backend_logger.info(f"  Food Storage: {[(f.name,q) for f,q in village_sim.food_storage.items()]}")
-    backend_logger.info(f"  Resource Storage: {[(r.name,q) for r,q in village_sim.resource_storage.items()]}")
-    backend_logger.info(f"  Village Attractiveness: {village_sim.village_attractiveness:.2f}")
+#     backend_logger.info("\n===== SIMULATION FINISHED =====")
+#     backend_logger.info(f"Final Village State for '{village_sim.name}' on {village_sim.current_date.strftime('%Y-%m-%d')}:")
+#     backend_logger.info(f"  Population: {village_sim.total_population}")
+#     backend_logger.info(f"  Avg Happiness: {village_sim.average_happiness:.2f}, Avg Health: {village_sim.average_health:.2f}")
+#     backend_logger.info(f"  Treasury: {village_sim.treasury:.2f}")
+#     backend_logger.info(f"  Food Storage: {[(f.name,q) for f,q in village_sim.food_storage.items()]}")
+#     backend_logger.info(f"  Resource Storage: {[(r.name,q) for r,q in village_sim.resource_storage.items()]}")
+#     backend_logger.info(f"  Village Attractiveness: {village_sim.village_attractiveness:.2f}")
 

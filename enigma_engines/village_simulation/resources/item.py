@@ -157,3 +157,39 @@ class Item(BaseModel):
         if not isinstance(other, Item):
             return NotImplemented
         return self.base_value <= other.base_value
+
+
+soggy_boot = Item(
+    name="Soggy Boot",
+    base_value=0.1,
+    description="A wet and muddy boot, not very useful.",
+    weight=0.5
+)
+
+old_coin = Item(
+    name="Old Coin",
+    base_value=0.5,
+    description="An ancient coin, slightly tarnished but still valuable.",
+    weight=0.02
+)
+
+rusty_sword = Item(
+    name="Rusty Sword",
+    base_value=5.0,
+    description="A sword that has seen better days, still sharp enough to cut.",
+    weight=2.5
+)
+
+lost_locket = Item(
+    name="Lost Locket",
+    base_value=10.0,
+    description="A tarnished silver locket.",
+    weight=0.1
+)
+
+scraps = Item(
+    name="Scraps",
+    base_value=0.05,
+    description="A handful of metal scraps, useful for crafting.",
+    weight=0.1
+)

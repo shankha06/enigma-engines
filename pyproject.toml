@@ -30,6 +30,7 @@ dependencies = [
     "pymdown-extensions>=10.15",
     "markdown>=3.8",
     "pydantic>=2.11.5",
+    "typer>=0.16.0",
 ]
 
 

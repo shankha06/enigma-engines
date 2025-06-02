@@ -1,11 +1,12 @@
-from pydantic import BaseModel, Field, validator
-from typing import List, Dict, Optional, Set, Tuple
-from enum import Enum
 from datetime import datetime
+from enum import Enum
+from typing import Dict, List, Optional, Set, Tuple
 from uuid import UUID, uuid4
 
-from enigma_engines.village_simulation.environment.villager import Villager
-from enigma_engines.animal_crossing.resources.item import Item
+from pydantic import BaseModel, Field, validator
+
+from enigma_engines.village_simulation.agents.villager import Villager, Item
+# from enigma_engines.village_simulation.resources.item import Item
 
 
 class MilitaryRank(str, Enum):

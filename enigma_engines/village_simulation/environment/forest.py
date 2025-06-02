@@ -3,7 +3,7 @@ from typing import Optional, Dict, List, Tuple, Any # Any for WeatherSystem if n
 import random
 import math
 
-from enigma_engines.village_simulation.environment.weather_system import WeatherSystem, TimeOfDay, Season, WeatherCondition
+from enigma_engines.village_simulation.environment.weather import WeatherSystem, TimeOfDay, Season, WeatherCondition
 
 class Forest(BaseModel):
     """
@@ -99,7 +99,7 @@ class Forest(BaseModel):
         self._update_moisture_and_environmental_risks(precipitation, temperature, condition)
         self._update_tree_growth_and_mortality(season, temperature, condition)
         self._update_wildlife_dynamics(season, temperature, condition)
-        self.update_disease_and_pests(season, temperature)
+        self._update_disease_and_pests(season, temperature)
         
         self.health = self._calculate_forest_health()
         self._update_tree_density()

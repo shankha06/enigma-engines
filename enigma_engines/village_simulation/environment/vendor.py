@@ -2,7 +2,7 @@ from typing import Dict, Optional, Union
 
 from pydantic import BaseModel
 
-from enigma_engines.animal_crossing.resources.item import Item
+from enigma_engines.village_simulation.resources.item import Item
 from enigma_engines.village_simulation.resources.clothing import (
     Clothing,
     daily_clothes,
@@ -45,7 +45,7 @@ class Vendor(BaseModel):
     description: Optional[str] = None
     inventory: Dict[Union[RawMaterial, Food, Item, Clothing], int] = {}
 
-    money = 0.0  # Balance for transactions
+    money: float = 0.0  # Balance for transactions
 
     def add_to_inventory(self, item: Union[RawMaterial, Clothing], quantity: int):
         """Adds a specified quantity of an item to the vendor's inventory."""

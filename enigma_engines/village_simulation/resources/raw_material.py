@@ -1,4 +1,4 @@
-from enigma_engines.animal_crossing.resources.item import Item
+from enigma_engines.village_simulation.resources.item import Item
 
 
 class RawMaterial(Item):

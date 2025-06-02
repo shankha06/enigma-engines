@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-from enigma_engines.animal_crossing.resources.item import Item
+from enigma_engines.village_simulation.resources.item import Item
 from enigma_engines.village_simulation.resources.raw_material import (
     RawMaterial,
     fabric,

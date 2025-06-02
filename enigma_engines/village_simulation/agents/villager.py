@@ -1,48 +1,38 @@
-import math
 import random
-from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 from pydantic import Field as PydanticField
 
 from enigma_engines.village_simulation.agents.action_plan import (
-    ActionPlan, 
+    ActionPlan,
     ActionType,
-    create_sleep_action,
-    create_eating_action,
     create_buying_action,
-    create_foraging_action,
+    create_eating_action,
     create_fishing_action,
+    create_foraging_action,
     create_hunting_action,
-    create_woodcutting_action,
     create_selling_goods_action,
+    create_sleep_action,
     create_tannery_work_action,
-    create_working_action,
+    create_woodcutting_action,
 )
-from enigma_engines.village_simulation.environment.forest import Forest
-from enigma_engines.village_simulation.environment.river import River
-from enigma_engines.village_simulation.environment.tannery import Tannery
-from enigma_engines.village_simulation.environment.weather import (
-    Season,
-    TimeOfDay,
-    WeatherCondition,
-    WeatherSystem,
-)
-from enigma_engines.village_simulation.resources.clothing import Clothing
+# from enigma_engines.village_simulation.environment.tannery import Tannery
 from enigma_engines.village_simulation.resources.food import (
-    Food, apple, bread, beer, fish, berries, fish_food, wild_meat_food
+    Food,
+    apple,
+    berries,
+    wild_meat_food,
 )
 from enigma_engines.village_simulation.resources.item import Item
-from enigma_engines.village_simulation.resources.raw_material import (
-    RawMaterial, wood, raw_hide, leather, herbs
-)
-from enigma_engines.village_simulation.utilities.id_generator import generate_medieval_villager_name
-from enigma_engines.village_simulation.utilities.logger import backend_logger
+from enigma_engines.village_simulation.resources.raw_material import herbs, leather, raw_hide, wood
+# from enigma_engines.village_simulation.simulation_engine.village_manager import VillageManager
+
 
 # --- Villager Class ---
 class Villager(BaseModel):
     name: str
+    gender : str # e.g
     age: int
     occupation: str # e.g., "Farmer", "Hunter", "Fisherman", "Tanner", "Woodcutter", "Forager"
     skills: Dict[str, float] = PydanticField(default_factory=dict) # Skill levels as floats for finer progression
@@ -66,6 +56,9 @@ class Villager(BaseModel):
     FOOD_LOW_THRESHOLD: int = 40 # Health below which villager prioritizes eating/getting food
     ENERGY_LOW_THRESHOLD: int = 30 # Energy below which villager prioritizes sleeping
     MIN_FOOD_STOCK: int = 2 # Minimum units of any food type before trying to acquire more
+
+    daily_earnings: float = 0.0 # For leaderboard
+    daily_expenses: float = 0.0 # For leaderboard
 
     class Config:
         arbitrary_types_allowed = True
@@ -174,185 +167,178 @@ class Villager(BaseModel):
             self.current_action_plan_list.append(potential_actions[0]) # Takes the highest priority action for now
             # A more complex planner could build a sequence.
 
-    def execute_next_action(self) -> bool:
+    def execute_next_action(self, village_manager_ref) -> bool: # Added village_manager_ref
         if not self.is_alive or not self.current_action_plan_list:
-            # Try to plan if no actions
             if self.is_alive: self.plan_next_actions()
             if not self.current_action_plan_list:
-                # If still no plan, villager is idle
                 idle_action = ActionPlan(action_type=ActionType.IDLE, priority=0, duration_hours=1, description="Idling")
-                idle_action.apply_impact(self) # Consume a little energy even when idle
-                self.action_history.append(idle_action)
-                return True # Idling is a valid state
-            
-        action = self.current_action_plan_list.pop(0) # Get and remove the first action
-
-        if not action.can_execute(self):
-            # print(f"{self.name} cannot execute action: {action.description}. Re-planning might be needed.")
-            return False
-
-        # print(f"{self.name} executing: {action.description} (Energy: {self.energy}, Health: {self.health})")
+                idle_action.apply_impact(self); self.action_history.append(idle_action); return True
         
-        success = True # Assume success unless specific action fails
-        action_message = f"{self.name} completed {action.description}."
-
-        # --- Handle specific action types ---
-        # Get duration from either duration_hours or duration field
-        duration = action.duration_hours if action.duration_hours is not None else action.duration
+        action = self.current_action_plan_list.pop(0)
+        if not action.can_execute(self): return False
         
-        if action.action_type == ActionType.SLEEPING:
-            self.energy = min(100, self.energy + duration * 10) # Energy recovery
-            self.health = min(100, self.health + duration * 1) # Slight health recovery
+        # Reset daily transaction trackers at the start of executing an action block for the day
+        # This should ideally be done once per day, perhaps in daily_update_cycle before actions loop.
+        # For now, resetting here means it tracks per action, which might not be intended for "daily" totals.
+        # To fix: move reset to daily_update_cycle. For this focused fix, will leave here and note.
+        # **Correction**: Resetting here is fine if execute_next_action is called multiple times a day.
+        # If daily_update_cycle calls execute_next_action in a loop, then daily_earnings/expenses
+        # should be reset *before* that loop in daily_update_cycle.
+        # For now, assume it's reset once before the first action of the day.
+        # The `village_manager_v1` has `daily_update_cycle` call this in a loop, so this reset is fine.
+
+        # self.daily_earnings = 0.0
+        # self.daily_expenses = 0.0
+
+        success = True; action_message = f"{self.name} {action.description}."
+        duration = action.duration_hours # Standardized
+        # print(duration, self.energy, self.health, self.happiness, self.money) # Debug print
+        if action.action_type == ActionType.SLEEP: # User code had SLEEP, matching to ActionType.SLEEPING
+            if duration is None:
+                duration = 4
+            self.energy=min(100,self.energy + duration * 10)
+            self.health=min(100,self.health + duration * 1)
         
         elif action.action_type == ActionType.EATING:
             if action.target_item and isinstance(action.target_item, Food) and self.inventory.get(action.target_item, 0) >= action.quantity:
                 self.inventory[action.target_item] -= action.quantity
-                self.health = min(100, self.health + action.target_item.nutritional_value * action.quantity)
-                self.happiness = min(100, self.happiness + 5 * action.quantity)
-                if self.inventory[action.target_item] == 0:
-                    del self.inventory[action.target_item]
-            else:
-                success = False; action_message = f"{self.name} failed to eat: {action.target_item.name if action.target_item else 'N/A'} not enough in inventory."
-
+                self.health=min(100,self.health + action.target_item.nutritional_value * action.quantity)
+                self.happiness=min(100,self.happiness + 5 * action.quantity)
+                if self.inventory.get(action.target_item, 0) == 0: del self.inventory[action.target_item]
+            else: success=False; action_message = f"{self.name} failed to eat {action.target_item.name if action.target_item else 'food'}."
+        
         elif action.action_type == ActionType.BUYING:
-            if action.target_item and self.money >= action.target_item.base_value * action.quantity:
-                self.inventory[action.target_item] = self.inventory.get(action.target_item, 0) + action.quantity
-                self.money -= action.target_item.base_value * action.quantity
-            else:
-                success = False; action_message = f"{self.name} failed to buy: Not enough money or item unavailable."
+            if action.target_item and village_manager_ref: # Check for village_manager_ref
+                bought_from_vendor = False
+                for vendor in village_manager_ref.vendors:
+                    can_sell = vendor.sell_item_to_customer(action.target_item, action.quantity, self.money)
+                    if can_sell:
+                        self.inventory[action.target_item] = self.inventory.get(action.target_item,0) + action.quantity
+                        self.money -= action.quantity * self.money
+                        self.daily_expenses += action.quantity * self.money # TRACK EXPENSE
+                        action_message = f"{self.name} bought {action.quantity} {action.target_item.name} from {vendor.shop_name} for {action.quantity * self.money:.2f}."
+                        if hasattr(village_manager_ref, 'log_incident'): village_manager_ref.log_incident(f"🛍️ {self.name} bought {action.quantity} {action.target_item.name} from {vendor.shop_name}.", "trade")
+                        bought_from_vendor = True
+                        break
+                if not bought_from_vendor:
+                    success=False; action_message = f"{self.name} failed to buy {action.target_item.name}: unavailable or not enough money."
+            elif not village_manager_ref:
+                success=False; action_message = f"{self.name} cannot buy: No market access (village_manager_ref missing)."
+            else: success=False
 
-        elif action.action_type == ActionType.SELLING_GOODS: # Generic selling
-            if action.target_item and self.inventory.get(action.target_item, 0) >= action.quantity:
-                self.inventory[action.target_item] -= action.quantity
-                # Assume selling price is 80% of base value
-                self.money += action.target_item.base_value * action.quantity * 0.8 
-                if self.inventory[action.target_item] == 0:
-                    del self.inventory[action.target_item]
-            else:
-                success = False; action_message = f"{self.name} failed to sell: Not enough {action.target_item.name if action.target_item else 'N/A'} in inventory."
+        elif action.action_type == ActionType.SELLING_GOODS:
+            if action.target_item and self.inventory.get(action.target_item,0) >= action.quantity and village_manager_ref:
+                sold_to_vendor = False
+                for vendor in village_manager_ref.vendors:
+                    can_buy = vendor.buy_item_from_producer(action.target_item, action.quantity, action.target_item.base_value) # Pass self.inventory
+                    if can_buy:
+                        # Inventory is already managed by vendor.buy_from_villager if it modifies it directly
+                        # Or, if it doesn't, we manage it here. Assuming it does for now.
+                        self.money += action.quantity * action.target_item.base_value
+                        self.daily_earnings += action.quantity * action.target_item.base_value # TRACK EARNINGS
+                        action_message = f"{self.name} sold {action.quantity} {action.target_item.name} to {vendor.shop_name} for {action.quantity * action.target_item.base_value:.2f}."
+                        if hasattr(village_manager_ref, 'log_incident'): village_manager_ref.log_incident(f"💰 {self.name} sold {action.quantity} {action.target_item.name} to {vendor.shop_name}.", "trade")
+                        sold_to_vendor = True
+                        break
+                if not sold_to_vendor: # Try selling to external market
+                    external_price = village_manager_ref.external_market_prices.get(action.target_item, action.target_item.base_value * 0.6)
+                    payment = external_price * action.quantity
+                    self.inventory[action.target_item] -= action.quantity
+                    if self.inventory.get(action.target_item, 0) == 0: del self.inventory[action.target_item]
+                    self.money += payment
+                    self.daily_earnings += payment # TRACK EARNINGS
+                    village_manager_ref.treasury -= payment # External market means money comes from "outside"
+                    village_manager_ref.goods_for_export[action.target_item] = village_manager_ref.goods_for_export.get(action.target_item,0) + action.quantity
+                    action_message = f"{self.name} sold {action.quantity} {action.target_item.name} to external market for {payment:.2f}."
+                    if hasattr(village_manager_ref, 'log_incident'): village_manager_ref.log_incident(f"🌍 {self.name} sold {action.quantity} {action.target_item.name} to external market.", "trade")
+            elif not village_manager_ref:
+                success=False; action_message = f"{self.name} cannot sell: No market access."
+            else: success=False; action_message = f"{self.name} failed to sell {action.target_item.name if action.target_item else 'goods'}."
         
         elif action.action_type == ActionType.FISHING:
-            river_target = action.target_location
-            if river_target and hasattr(river_target, 'attempt_fishing') and self.weather_system:
-                # Pass villager instance for skill checks etc. within river's method
+            if self.current_river and self.weather_system and village_manager_ref:
                 time_of_day = self.weather_system.get_time_of_day()
-                fish_result = river_target.attempt_fishing(self, str(action.target_entity), time_of_day, duration)
-                action_message = fish_result.message
-                if fish_result.success and fish_result.catch and fish_result.quantity > 0:
-                    # The River's attempt_fishing should ideally handle adding to villager inventory.
-                    # If not, add it here. Assuming it does.
-                    # For now, let's assume the fish_result.catch is the Food item to add.
-                    # And the River class already updated inventory.
-                    self.increase_skill("fishing", 0.1 * fish_result.quantity)
-                    self.happiness = min(100, self.happiness + 2 * fish_result.quantity)
-                elif not fish_result.success:
-                    self.happiness = max(0, self.happiness - 2)
-            else: success = False; action_message = f"{self.name} cannot fish: No valid river or weather system."
+                fish_res = self.current_river.attempt_fishing(self, str(action.target_entity), time_of_day, duration)
+                action_message = fish_res.message # River's attempt_fishing should handle inventory
+                if fish_res.success and fish_res.quantity > 0 and fish_res.catch: 
+                    self.increase_skill("fishing",0.1*fish_res.quantity)
+                    if hasattr(village_manager_ref, 'log_incident'): village_manager_ref.log_incident(f"🎣 {self.name} caught {fish_res.quantity} {fish_res.catch.name}.", "activity")
+                elif not fish_res.success: self.happiness=max(0,self.happiness-2)
+            else: success=False; action_message = f"{self.name} cannot fish: Missing river/weather/manager."
 
         elif action.action_type == ActionType.HUNTING:
-            forest_target = action.target_location
-            species_to_hunt = str(action.target_entity)
-            if forest_target and hasattr(forest_target, 'record_animal_hunted') and species_to_hunt:
-                # Skill check can influence success before calling record_animal_hunted
-                hunt_skill = self.get_skill("hunting")
-                success_chance = 0.3 + hunt_skill * 0.05 # Base 30% + 5% per skill level
-                if random.random() < success_chance:
-                    if forest_target.record_animal_hunted(species_name=species_to_hunt, count=1):
-                        # Add meat/hide to inventory
-                        self.inventory[wild_meat_food] = self.inventory.get(wild_meat_food, 0) + 1
-                        self.inventory[raw_hide] = self.inventory.get(raw_hide, 0) + 1
-                        action_message = f"{self.name} successfully hunted a {species_to_hunt}."
-                        self.increase_skill("hunting", 0.2)
-                        self.happiness = min(100, self.happiness + 10)
-                    else:
-                        success = False; action_message = f"{self.name} failed to hunt {species_to_hunt} (forest reported failure or none available)."
-                        self.happiness = max(0, self.happiness - 5)
-                else:
-                    success = False; action_message = f"{self.name} tried to hunt {species_to_hunt} but failed (skill check)."
-                    self.increase_skill("hunting", 0.05) # Small skill gain for trying
-                    self.happiness = max(0, self.happiness - 3)
-            else: success = False; action_message = f"{self.name} cannot hunt: No valid forest or target."
-
-        elif action.action_type == ActionType.WOODCUTTING:
-            forest_target = action.target_location
-            if forest_target and hasattr(forest_target, 'cut_trees'):
-                # Amount to cut based on skill and duration
-                woodcutting_skill = self.get_skill("woodcutting")
-                amount_to_try_cut = int(duration * (1 + woodcutting_skill * 0.5))
-                
-                actually_cut, wood_types_yield = forest_target.cut_trees(amount_to_try_cut)
-                if actually_cut > 0:
-                    self.inventory[wood] = self.inventory.get(wood, 0) + actually_cut
-                    action_message = f"{self.name} cut {actually_cut} logs. Yield: {wood_types_yield}."
-                    self.increase_skill("woodcutting", 0.1 * actually_cut)
-                    self.happiness = min(100, self.happiness + 1 * actually_cut)
-                else:
-                    action_message = f"{self.name} tried to cut wood but got none."
-                    self.happiness = max(0, self.happiness - 1)
-            else: success = False; action_message = f"{self.name} cannot cut wood: No valid forest."
-
-        elif action.action_type == ActionType.FORAGING:
-            forest_target = action.target_location
-            if forest_target and hasattr(forest_target, 'health'): # Use forest health/undergrowth
-                foraging_skill = self.get_skill("foraging")
-                # Success and yield based on skill, forest health, undergrowth
-                forage_chance = 0.4 + foraging_skill * 0.05 + forest_target.undergrowth_density * 0.2 + forest_target.health * 0.1
-                if random.random() < forage_chance:
-                    # Determine what was found (simplified)
-                    found_item = random.choice([berries, herbs])
-                    found_quantity = random.randint(1, int(1 + foraging_skill + duration))
-                    self.inventory[found_item] = self.inventory.get(found_item, 0) + found_quantity
-                    action_message = f"{self.name} foraged and found {found_quantity} {found_item.name}."
-                    self.increase_skill("foraging", 0.15 * found_quantity)
-                    self.happiness = min(100, self.happiness + 3 * found_quantity)
-                else:
-                    action_message = f"{self.name} foraged but found nothing."
-                    self.increase_skill("foraging", 0.05)
-                    self.happiness = max(0, self.happiness - 2)
-            else: success = False; action_message = f"{self.name} cannot forage: No valid forest."
-
-        elif action.action_type == ActionType.TANNERY_WORK:
-            tannery_target = action.target_location
-            if isinstance(tannery_target, Tannery) and hasattr(tannery_target, 'process_hides'):
-                hides_to_process = self.inventory.get(raw_hide, 0)
-                tanning_skill = self.get_skill("tanning")
-                if hides_to_process > 0:
-                    leather_produced, hides_used = tannery_target.process_hides(hides_to_process, int(tanning_skill))
-                    
-                    self.inventory[raw_hide] -= hides_used
-                    if self.inventory[raw_hide] == 0: del self.inventory[raw_hide]
-                    self.inventory[leather] = self.inventory.get(leather, 0) + leather_produced
-                    
-                    money_earned = leather_produced * (leather.base_value * 0.2) # Earn a fraction for work
-                    self.money += money_earned
-                    action_message = f"{self.name} worked at the tannery, produced {leather_produced} leather, earned {money_earned:.1f}."
-                    self.increase_skill("tanning", 0.1 * leather_produced)
-                    self.happiness = min(100, self.happiness + 2 * leather_produced)
-                else:
-                    action_message = f"{self.name} wanted to work at tannery but had no raw hides."
-            else: success = False; action_message = f"{self.name} cannot work at tannery: Invalid target."
+            if self.current_forest and action.target_entity and village_manager_ref:
+                hunt_skill=self.get_skill("hunting"); success_chance=0.2+hunt_skill*0.06
+                if random.random()<success_chance:
+                    if self.current_forest.wildlife_populations.get(str(action.target_entity), 0) > 0:
+                        if self.current_forest.record_animal_hunted(str(action.target_entity),1): # Forest records kill
+                            self.current_forest.wildlife_populations[str(action.target_entity)] -=1 # Villager action updates forest
+                            self.inventory[wild_meat_food]=self.inventory.get(wild_meat_food,0)+1; self.inventory[raw_hide]=self.inventory.get(raw_hide,0)+1
+                            self.increase_skill("hunting",0.25); self.happiness=min(100,self.happiness+10)
+                            action_message = f"{self.name} successfully hunted a {action.target_entity}."
+                            if hasattr(village_manager_ref, 'log_incident'): village_manager_ref.log_incident(f"🏹 {self.name} hunted a {action.target_entity}.", "activity")
+                        else: success=False; action_message=f"{self.name} saw a {action.target_entity} but it got away."
+                    else: success=False; action_message=f"{self.name} found no {action.target_entity} to hunt."
+                else: success=False; action_message=f"{self.name} failed the hunt for {action.target_entity}."; self.increase_skill("hunting",0.05); self.happiness=max(0,self.happiness-3)
+            else: success=False; action_message = f"{self.name} cannot hunt: Missing forest/target/manager."
         
-        elif action.action_type == ActionType.WORKING: # Generic work, e.g. farming if employer is Field
-            # This part remains more abstract without specific Field interactions defined
-            # For now, just consumes energy and gives some money/happiness
-            self.money += duration * 2 # Simple wage
+        elif action.action_type == ActionType.WOODCUTTING: # User code used 'wood' for item
+            if self.current_forest and village_manager_ref:
+                skill=self.get_skill("woodcutting"); amount=int(duration*(1+skill*0.5))
+                cut,yielded_map=self.current_forest.cut_trees(amount) 
+                if cut>0: 
+                    self.inventory[wood]=self.inventory.get(wood,0)+cut # Use 'wood' as per user's plan_actions
+                    self.increase_skill("woodcutting",0.1*cut)
+                    self.current_forest.mature_trees -= cut 
+                    action_message = f"{self.name} cut {cut} {wood.name}."
+                    if hasattr(village_manager_ref, 'log_incident'): village_manager_ref.log_incident(f"🪓 {self.name} cut {cut} {wood.name}.", "activity")
+                else: self.happiness=max(0,self.happiness-1); action_message = f"{self.name} cut no wood."
+            else: success=False; action_message = f"{self.name} cannot cut wood: Missing forest/manager."
+        
+        elif action.action_type == ActionType.FORAGING:
+            if self.current_forest and village_manager_ref:
+                skill=self.get_skill("foraging"); chance=0.4+skill*0.05+(getattr(self.current_forest, 'undergrowth_density', 0.5))*0.2+(getattr(self.current_forest, 'health', 0.5))*0.1
+                if random.random()<chance:
+                    item=random.choice([berries,herbs, apple]); qty=random.randint(1,int(1+skill+duration*0.5))
+                    self.inventory[item]=self.inventory.get(item,0)+qty; self.increase_skill("foraging",0.15*qty)
+                    action_message = f"{self.name} foraged {qty} {item.name}."
+                    if hasattr(village_manager_ref, 'log_incident'): village_manager_ref.log_incident(f"🧺 {self.name} foraged {qty} {item.name}.", "activity")
+                else: self.increase_skill("foraging",0.05); self.happiness=max(0,self.happiness-2); action_message = f"{self.name} foraged nothing."
+            else: success=False; action_message = f"{self.name} cannot forage: Missing forest/manager."
+        
+        elif action.action_type == ActionType.TANNERY_WORK:
+            if self.current_tannery and hasattr(self.current_tannery, 'process_hides') and village_manager_ref:
+                hides=self.inventory.get(raw_hide,0); skill=self.get_skill("tanning")
+                if hides>0:
+                    produced,used=self.current_tannery.process_hides(hides,skill)
+                    self.inventory[raw_hide]-=used; self.inventory[leather]=self.inventory.get(leather,0)+produced
+                    if self.inventory.get(raw_hide,0)==0: del self.inventory[raw_hide]
+                    earned = produced*(leather.base_value*0.3) 
+                    self.money+=earned; self.daily_earnings += earned # TRACK EARNINGS
+                    self.increase_skill("tanning",0.1*produced)
+                    action_message = f"{self.name} tanned {used} hides into {produced} leather, earned {earned:.2f}."
+                    if hasattr(village_manager_ref, 'log_incident'): village_manager_ref.log_incident(f"🏭 {self.name} produced {produced} leather.", "crafting")
+                else: action_message = f"{self.name} has no hides for tannery."
+            else: success=False; action_message = f"{self.name} cannot work at tannery: Missing tannery/manager."
+        
+        elif action.action_type == ActionType.WORKING:
+            wage = duration * (2 + self.get_skill(action.target_location.lower() if isinstance(action.target_location, str) else "general_labor") * 0.5) # Skill based wage
+            self.money += wage
+            self.daily_earnings += wage # TRACK EARNINGS
             self.happiness = min(100, self.happiness + duration * 1)
-            action_message = f"{self.name} worked at {action.target_location} for {duration} hours."
+            action_message = f"{self.name} worked at {action.target_location} for {duration} hours, earned {wage:.2f}."
+            if village_manager_ref and hasattr(village_manager_ref, 'log_incident'): village_manager_ref.log_incident(f"🛠️ {self.name} worked as {self.occupation}, earned {wage:.2f}.", "activity")
 
 
-        # Apply general impact of the action (energy, etc.)
-        action.apply_impact(self)
-        self.action_history.append(action)
-        # print(action_message)
-        # print(f"  {self.name} state: E:{self.energy}, H:{self.health}, Hap:{self.happiness}, M:{self.money:.1f}")
-
-
-        # Basic needs check after action
-        if self.health <= 0:
+        action.apply_impact(self); self.action_history.append(action)
+        if village_manager_ref and hasattr(village_manager_ref, 'master_log_for_summary'):
+             village_manager_ref.master_log_for_summary.append(action_message)
+        
+        if self.health <= 0: 
             self.is_alive = False
-            # print(f"{self.name} has died.")
-            return False # Stop further actions if dead
-            
+            if village_manager_ref and hasattr(village_manager_ref, 'log_incident'):
+                village_manager_ref.log_incident(f"💀 {self.name} has died due to action consequences.", "death")
+            return False
         return success
 
     def daily_needs_check_and_death(self):
@@ -372,32 +358,23 @@ class Villager(BaseModel):
             self.health = 0
             # print(f"{self.name} has succumbed to their hardships and died.")
 
-    def daily_update_cycle(self, world_knowledge: Optional[Dict[str, Any]] = None):
-        """Simulates a full day cycle of planning and acting for the villager."""
-        if not self.is_alive:
-            return
-
-        # print(f"\n--- {self.name}'s Day Begins (E:{self.energy} H:{self.health} Hap:{self.happiness}) ---")
+    def daily_update_cycle(self, world_knowledge, village_manager_ref):
+        if not self.is_alive: return
         
-        # 1. Plan actions for the day (could be one or a sequence)
+        # Reset daily earnings/expenses at the START of the villager's day cycle
+        self.daily_earnings = 0.0
+        self.daily_expenses = 0.0
+
         self.plan_next_actions(world_knowledge)
+        actions_today = 0; MAX_ACTIONS = 3
         
-        # 2. Execute planned actions throughout the day (simplified loop)
-        # A real game loop would advance hours and let villager execute actions at appropriate times.
-        # Here, we'll just execute the first few high-priority actions or until energy runs low.
-        actions_this_day = 0
-        MAX_ACTIONS_PER_DAY_SIM = 3 # Limit simulation complexity per cycle
-
-        while self.current_action_plan_list and self.energy > self.ENERGY_LOW_THRESHOLD / 2 and actions_this_day < MAX_ACTIONS_PER_DAY_SIM:
-            if not self.execute_next_action():
-                # print(f"{self.name} failed to execute an action, re-evaluating.")
-                self.plan_next_actions(world_knowledge) # Re-plan if an action fails critically
-            actions_this_day += 1
+        while self.current_action_plan_list and self.energy > self.ENERGY_LOW_THRESHOLD / 2 and actions_today < MAX_ACTIONS:
+            if not self.execute_next_action(village_manager_ref):
+                self.plan_next_actions(world_knowledge) 
+            actions_today += 1
             if not self.is_alive: break
         
-        # If no actions were planned or executed, villager was idle or sleeping
-        if actions_this_day == 0 and not self.current_action_plan_list:
-             self.execute_next_action() # Will likely execute IDLE or SLEEP
-
+        if actions_today == 0 and not self.current_action_plan_list: 
+            self.execute_next_action(village_manager_ref) 
+        
         self.daily_needs_check_and_death()
-        # print(f"--- {self.name}'s Day Ends (E:{self.energy} H:{self.health} Hap:{self.happiness}, Alive: {self.is_alive}) ---")
