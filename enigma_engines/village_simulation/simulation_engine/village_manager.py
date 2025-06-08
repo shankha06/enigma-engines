@@ -13,6 +13,8 @@ from rich.padding import Padding
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from rich.columns import Columns
+from rich.align import Align # For centering weather
 
 from enigma_engines.village_simulation.agents.villager import Villager
 from enigma_engines.village_simulation.environment.army import Army
@@ -84,7 +86,10 @@ class VillageManager(BaseModel):
             "crime": "🔪", "celebration": "🎉", "illness": "🤢", "recovery": "💪",
             "activity": "🛠️", "crafting": "🔧", "farming": "🌾", "warning": "⚠️"
         }
-        self.daily_incidents.append((icon_map.get(category, "ℹ️"), message))
+        if category in icon_map and category not in ["activity", "crafting", "farming"]:
+            # Generic or activity-related messages use a neutral icon
+            icon_map[category] = "ℹ️"
+            self.daily_incidents.append((icon_map.get(category, "ℹ️"), message))
 
     def initialize_village(self, num_villagers: int = 10, forest_size_sqkm: float = 2.0, river_name: str = "Clearwater River"):
         backend_logger.info(f"Initializing village: {self.name} on {self.current_date.strftime('%Y-%m-%d')}")
@@ -483,45 +488,155 @@ class VillageManager(BaseModel):
         return elements if elements else [Text("No specific leaderboard data for today.", style="italic")]
 
 
-    def _print_day_summary_panel_rich(self, panel_title: str, info_elements: list):
-        panel_content_renderables = []
-        for item in info_elements:
-            if hasattr(item, "__rich_console__"): 
-                panel_content_renderables.append(item)
-            else: 
-                panel_content_renderables.append(Text(str(item)))
-        content_group = Group(*panel_content_renderables)
-        rich_console_instance.print(
-            Panel(Padding(content_group, (1, 2)), title=panel_title, border_style="bold bright_blue", expand=False)
+    def _print_day_summary_panel_rich(self, title, elements):
+        # This is your existing method to print the final panel.
+        # For demonstration, let's assume it prints to console.
+        from rich.console import Console
+        from rich.panel import Panel as RichPanel # Alias to avoid conflict if needed
+        console = Console()
+        console.print(RichPanel(Group(*elements), title=title, border_style="blue", expand=False))
+
+
+
+    def _display_daily_report_rich(self,
+                                   recent_activities_count: int = 5,
+                                   expand_activities: bool = False):
+        """
+        Displays a rich, user-friendly, and space-efficient daily village report.
+
+        Args:
+            recent_activities_count (int): Number of recent activities to show if expanded.
+            expand_activities (bool): Whether to display the detailed villager action log.
+        """
+        main_panel_title = (
+            f":calendar: [bold cyan]Village Report: {self.name}[/] - [yellow]Day {self.weather_system.total_days_simulated}[/] "
+            f"({self.current_date.strftime('%a, %b %d')}) :sparkles:" # Even shorter date
         )
 
-    def _display_daily_report_rich(self):
-        panel_title = (
-            f":calendar: [bold cyan]Village Report for {self.name}[/] - [yellow]Day {self.weather_system.total_days_simulated}[/] "
-            f"({self.current_date.strftime('%A, %B %d, %Y')}) :sparkles:"
+        report_elements = []
+
+        # Section 1: Weather (Centered, single line content)
+        weather_renderable = self._prepare_weather_panel_content() # Should return a single Text object
+        report_elements.append(
+            Panel(
+                Align.center(weather_renderable), # Center the content within the panel
+                title="[b yellow]:sun_behind_cloud: Weather[/b yellow]",
+                border_style="yellow",
+                padding=(0,1) # Minimal vertical padding
+            )
         )
-        
-        all_info_elements = []
-        
-        # Section 1: Weather
-        all_info_elements.append(Panel(Group(*self._prepare_weather_panel_content()), title="[b yellow]:sun_behind_cloud: Weather Update[/b yellow]", border_style="yellow"))
-        
-        # Section 2: Village Stats
-        all_info_elements.append(Panel(Group(*self._prepare_village_stats_panel_content()), title="[b green]:chart_increasing: Village Statistics[/b green]", border_style="green"))
 
-        # Section 3: Major Incidents
-        all_info_elements.append(Panel(Group(*self._prepare_incidents_panel_content()), title="[b red]:loudspeaker: Daily Incidents[/b red]", border_style="red"))
+        # --- Sections for 3-Column Layout ---
+        column_panels = []
 
-        # Section 4: Leaderboards
-        all_info_elements.append(Panel(Group(*self._prepare_leaderboard_panel_content()), title="[b magenta]:trophy: Leaderboards[/b magenta]", border_style="magenta"))
-
-        # Section 5: Detailed Villager Action Log (Optional, can be very verbose)
-        if self.master_log_for_summary:
-            log_text = Text("\n".join(self.master_log_for_summary[-20:])) # Last 20 actions
-            all_info_elements.append(Panel(log_text, title="[b bright_black]Recent Activities[/b bright_black]", border_style="bright_black"))
+        # Column 1: Village Stats
+        stats_content = list(self._prepare_village_stats_panel_content())
+        if stats_content:
+            column_panels.append(
+                Panel(
+                    Group(*stats_content),
+                    title="[b green]:chart_with_upwards_trend: Stats[/b green]", # Emoji changed for variety
+                    border_style="green",
+                    padding=(1, 1) # Padding within the panel
+                )
+            )
+        else:
+            column_panels.append(Panel(Text("No stats.", style="dim"), title="[b green]:chart_with_upwards_trend: Stats[/b green]", border_style="green"))
 
 
-        self._print_day_summary_panel_rich(panel_title, all_info_elements)
+        # Column 2: Daily Incidents
+        incidents_content = list(self._prepare_incidents_panel_content())
+        # Ensure incidents_content is not just the "No major incidents" message before creating a full panel
+        has_actual_incidents = any(isinstance(item, Text) and "No notable incidents" not in item.plain for item in incidents_content)
+
+        if has_actual_incidents or not incidents_content: # if content or if prep method returned empty list
+            inc_panel_content = Group(*incidents_content) if incidents_content else Text("No incidents.", style="dim")
+            column_panels.append(
+                Panel(
+                    inc_panel_content,
+                    title="[b red]:megaphone: Incidents[/b red]",
+                    border_style="red",
+                    padding=(1, 1)
+                )
+            )
+        elif incidents_content : # Only "No notable incidents" message
+             column_panels.append(
+                Panel(
+                    Group(*incidents_content), # Display the "No notable incidents" message
+                    title="[b red]:megaphone: Incidents[/b red]",
+                    border_style="red",
+                    padding=(1, 1)
+                )
+            )
+
+
+        # Column 3: Leaderboards
+        leaderboard_content = list(self._prepare_leaderboard_panel_content())
+        if leaderboard_content:
+            column_panels.append(
+                Panel(
+                    Group(*leaderboard_content),
+                    title="[b magenta]:trophy: Leaders[/b magenta]", # Shorter
+                    border_style="magenta",
+                    padding=(1, 1)
+                )
+            )
+        else:
+            column_panels.append(Panel(Text("No leaderboard data.", style="dim"), title="[b magenta]:trophy: Leaders[/b magenta]", border_style="magenta"))
+
+        # Add the Columns object to the main report elements
+        if column_panels:
+            report_elements.append(Columns(column_panels, padding=1, expand=False, equal=True)) # equal=True can help with width distribution
+
+        # --- Section: Recent Activities (Conditionally Expanded) ---
+        if expand_activities:
+            if self.master_log_for_summary:
+                num_logs = min(recent_activities_count, len(self.master_log_for_summary))
+                log_entries = self.master_log_for_summary[-num_logs:]
+                if log_entries:
+                    log_text = Text("\n".join(log_entries), overflow="fold")
+                    report_elements.append(
+                        Panel(
+                            log_text,
+                            title=f"[b bright_black]:scroll: Recent Activities ({num_logs} shown)[/b bright_black]",
+                            border_style="bright_black",
+                            padding=(1, 1),
+                            subtitle="[dim](expand_activities=True)[/dim]",
+                            subtitle_align="right"
+                        )
+                    )
+                else: # Log is empty but expansion was requested
+                    report_elements.append(
+                        Panel(
+                            Text("No recent activities recorded.", style="italic dim"),
+                            title="[b bright_black]:scroll: Recent Activities[/b bright_black]",
+                            border_style="bright_black",
+                            padding=(1,1)
+                        )
+                    )
+            else: # No master log
+                report_elements.append(
+                    Panel(
+                        Text("Activity logging is not available or empty.", style="italic dim"),
+                        title="[b bright_black]:scroll: Recent Activities[/b bright_black]",
+                        border_style="bright_black",
+                        padding=(1,1)
+                    )
+                )
+        else:
+            # Collapsed view for Recent Activities
+            report_elements.append(
+                Panel(
+                    Align.center(Text(f"Enable 'expand_activities=True' to view details.", style="italic dim")),
+                    title="[b bright_black]:scroll: Recent Activities (Collapsed)[/b bright_black]",
+                    border_style="bright_black",
+                    padding=(1,1),
+                    height=3 # Fixed height for collapsed view
+                )
+            )
+
+        # Print the entire report
+        self._print_day_summary_panel_rich(main_panel_title, report_elements)
 
 # --- Main Simulation Example ---
 # if __name__ == "__main__":

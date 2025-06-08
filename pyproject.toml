@@ -62,6 +62,14 @@ dev = [
     "mkdocs-awesome-nav>=3.1.2",
     "mkdocs-awesome-pages-plugin>=2.10.1",
     "mkdocs-mermaid2-plugin>=1.2.1",
+    "torch>=2.7.0",
+    "scikit-learn>=1.6.1",
+    "matplotlib>=3.10.3",
+    "ipykernel>=6.29.5",
+    "sentence-transformers>=4.1.0",
+    "datasets>=3.6.0",
+    "huggingface>=0.0.1",
+    "transformers[torch]>=4.51.3",
 ]
 infra = [
     "boto3>=1.38.24",

@@ -110,6 +110,7 @@ ENV/
 env.bak/
 venv.bak/
 .vscode/
+checkpoints/
 
 # Spyder project settings
 .spyderproject

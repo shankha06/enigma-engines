@@ -29,17 +29,17 @@ def run_village_simulation(
         if hasattr(village, "_display_daily_report_rich"):
             village._display_daily_report_rich()
         # Log detailed villager status every 5 days
-        if day % 5 == 0:
-            from enigma_engines.village_simulation.utilities.logger import backend_logger
-            backend_logger.info(f"--- Villager Status Check - End of Day {day} ---")
-            if not village.villagers:
-                backend_logger.info("No villagers left.")
-                break
-            for v_id, v in village.villagers.items():
-                inv_summary = {item.name: qty for item, qty in v.inventory.items()}
-                backend_logger.info(
-                    f"  {v.name} ({v.occupation}, {v.age}yo): H:{v.health} E:{v.energy} Hap:{v.happiness} M:{v.money:.1f} Skills:{v.skills} Inv:{inv_summary} Alive:{v.is_alive}"
-                )
+        # if day % 5 == 0:
+        #     from enigma_engines.village_simulation.utilities.logger import backend_logger
+        #     backend_logger.info(f"--- Villager Status Check - End of Day {day} ---")
+        #     if not village.villagers:
+        #         backend_logger.info("No villagers left.")
+        #         break
+        #     for v_id, v in village.villagers.items():
+        #         inv_summary = {item.name: qty for item, qty in v.inventory.items()}
+        #         backend_logger.info(
+        #             f"  {v.name} ({v.occupation}, {v.age}yo): H:{v.health} E:{v.energy} Hap:{v.happiness} M:{v.money:.1f} Skills:{v.skills} Inv:{inv_summary} Alive:{v.is_alive}"
+        #         )
     # Final summary
     from enigma_engines.village_simulation.utilities.logger import backend_logger
     backend_logger.info("\n===== SIMULATION FINISHED =====")
@@ -54,5 +54,5 @@ def run_village_simulation(
 if __name__ == "__main__":
     run_village_simulation(
         village_name="Greendale",
-        num_days=60,
+        num_days=10,
         num_villagers=20, forest_size_sqkm=5.0, river_name="Crystal River")
